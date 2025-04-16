@@ -26,7 +26,10 @@ const emit = defineEmits(["clear-filters"]);
   <div class="bg-white max-w-[980px] mx-auto rounded-lg shadow-md p-6">
     <!-- Loading State -->
     <div v-if="isLoading" class="text-center text-gray-600 py-10">
-      Loading articles...
+      <p>Loading articles...</p>
+      <p class="text-xs text-gray-500">
+        (refresh after 1 minute, the free tier server is starting up)
+      </p>
     </div>
 
     <!-- Error State -->
