@@ -1,0 +1,142 @@
+[
+  {
+    "column_name": "id",
+    "data_type": "integer",
+    "column_default": "nextval('content_id_seq'::regclass)",
+    "is_nullable": "NO",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "uuid",
+    "data_type": "uuid",
+    "column_default": "gen_random_uuid()",
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "title",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "NO",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "source_url",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "NO",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "source_type",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "NO",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "authors",
+    "data_type": "ARRAY",
+    "column_default": null,
+    "is_nullable": "NO",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "published_date",
+    "data_type": "timestamp with time zone",
+    "column_default": null,
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "content_snippet",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "full_content",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "sentence_summary",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "paragraph_summary",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "topics",
+    "data_type": "ARRAY",
+    "column_default": null,
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "image_url",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "created_at",
+    "data_type": "timestamp with time zone",
+    "column_default": "now()",
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "author_credentials",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "why_valuable",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "unique_aspects",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "score",
+    "data_type": "integer",
+    "column_default": null,
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "full_content_markdown",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  },
+  {
+    "column_name": "key_implication",
+    "data_type": "text",
+    "column_default": null,
+    "is_nullable": "YES",
+    "character_maximum_length": null
+  }
+]
