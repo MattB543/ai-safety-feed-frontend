@@ -1,17 +1,11 @@
 <script setup>
-import { ref, defineProps, computed } from "vue";
+import { ref, computed } from "vue";
 import {
-  IconArticle,
-  IconHeadphones,
-  IconFileText,
-  IconBrandYoutube,
-  IconBrandTwitter,
-  IconLink,
-  IconListDetails,
-  IconExternalLink,
-  IconKey,
-} from "@tabler/icons-vue";
-import { formatDate } from "../utils/formatters";
+  ListDetails as IconListDetails,
+  ExternalLink as IconExternalLink,
+  Key as IconKey,
+} from "@vicons/tabler";
+import { formatDate, formatTagForDisplay } from "../utils/formatters";
 import MarkdownIt from "markdown-it";
 
 // --- Props ---
@@ -47,7 +41,7 @@ function toggleKeyImplication() {
 </script>
 
 <template>
-  <article class="bg-white p-6 border-gray-300">
+  <article class="bg-white px-6">
     <!-- Top Section: Image on Left, Info on Right -->
     <div class="flex flex-col md:flex-row gap-4 mb-4">
       <div v-if="article.image_url" class="md:w-1/4 flex-shrink-0">
@@ -129,7 +123,7 @@ function toggleKeyImplication() {
               :key="topic"
               class="inline-block bg-gray-100 rounded px-1.5 py-0.5 text-sm text-gray-500"
             >
-              {{ topic.charAt(0).toUpperCase() + topic.slice(1) }}
+              {{ formatTagForDisplay(topic) }}
             </span>
           </span>
         </div>

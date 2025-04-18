@@ -1,27 +1,53 @@
 <script setup>
-defineProps({
-  modelValue: String, // For v-model
+import { computed } from "vue";
+import { NInput, NButton, NIcon } from "naive-ui";
+import { Search as SearchIcon } from "@vicons/tabler";
+
+const props = defineProps({
+  modelValue: {
+    type: String,
+    default: "",
+  },
+});
+const emit = defineEmits(["update:modelValue", "search"]);
+
+// two‑way binding helper so we can use v‑model:value cleanly
+const value = computed({
+  get: () => props.modelValue,
+  set: (v) => emit("update:modelValue", v),
 });
 
-defineEmits(["update:modelValue", "search"]);
+function handleSearch() {
+  emit("search");
+}
 </script>
 
 <template>
-  <div class="max-w-[980px] mx-auto px-6 mb-6 flex items-center gap-2">
-    <input
-      type="search"
-      :value="modelValue"
-      @input="$emit('update:modelValue', $event.target.value)"
-      @keyup.enter="$emit('search')"
+  <div class="flex gap-2 w-full">
+    <!-- Input with search icon prefix -->
+    <NInput
+      v-model:value="value"
       placeholder="Search feed..."
-      class="flex-grow px-4 py-2 border border-gray-300 rounded-md focus:ring-blue-500 focus:border-blue-500"
-      aria-label="Search feed"
-    />
+      size="medium"
+      clearable
+      @keyup.enter="handleSearch"
+      class="flex-grow"
+    >
+      <template #prefix>
+        <NIcon>
+          <SearchIcon />
+        </NIcon>
+      </template>
+    </NInput>
+
+    <!-- Search button -->
     <button
-      @click="$emit('search')"
-      class="px-4 py-2 bg-white text-blue-500 border border-blue-500 rounded-md hover:bg-blue-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-2 cursor-pointer"
+      @click="handleSearch"
+      class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-xs text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none flex-shrink-0"
     >
       Search
     </button>
   </div>
 </template>
+
+<style scoped></style>

@@ -1,5 +1,5 @@
 <script setup>
-import { defineProps, defineEmits } from "vue";
+import { defineEmits } from "vue";
 import ArticleCard from "./ArticleCard.vue";
 
 // --- Props ---
@@ -23,7 +23,9 @@ const emit = defineEmits(["clear-filters"]);
 </script>
 
 <template>
-  <div class="bg-white max-w-[980px] mx-auto rounded-lg shadow-md p-6">
+  <ul
+    class="bg-white max-w-[980px] mx-auto rounded-lg shadow-md p-6 divide-y divide-gray-200"
+  >
     <!-- Loading State -->
     <div v-if="isLoading" class="text-center text-gray-600 py-10">
       <p>Loading articles...</p>
@@ -56,16 +58,16 @@ const emit = defineEmits(["clear-filters"]);
       </button>
     </div>
 
-    <!-- Articles Feed -->
-    <div v-else class="space-y-6">
-      <ArticleCard
-        v-for="(article, index) in articles"
+    <!-- Articles Feed: Wrapped ArticleCard in li and added padding -->
+    <template v-else>
+      <li
+        v-for="article in articles"
         :key="article.id || article.source_url"
-        :article="article"
-        :class="{
-          'border-b border-gray-300': index !== articles.length - 1,
-        }"
-      />
-    </div>
-  </div>
+        class="pt-14 pb-6 first:pt-0 last:pb-0"
+      >
+        <!-- Removed conditional border class -->
+        <ArticleCard :article="article" />
+      </li>
+    </template>
+  </ul>
 </template>
