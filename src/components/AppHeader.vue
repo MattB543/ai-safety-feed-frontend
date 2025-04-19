@@ -1,11 +1,11 @@
 <template>
-  <header class="bg-white shadow-sm py-4">
+  <header class="bg-white shadow-sm py-4 px-4">
     <div
       class="w-full max-w-[980px] mx-auto flex flex-col items-start gap-4 md:flex-row md:justify-between md:items-center"
     >
       <h1 class="text-2xl font-bold text-gray-800">AI Safety Feed</h1>
       <div
-        class="flex items-center gap-3 flex-wrap w-full justify-start md:w-auto md:justify-end"
+        class="flex items-center gap-2 md:gap-3 flex-wrap w-full justify-start md:w-auto md:justify-end"
       >
         <!-- Submit Content Button -->
         <a
