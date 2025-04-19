@@ -24,7 +24,7 @@ const emit = defineEmits(["clear-filters"]);
 
 <template>
   <ul
-    class="bg-white max-w-[980px] mx-auto rounded-lg shadow-md p-0 sm:p-6 divide-y divide-gray-200"
+    class="bg-white max-w-[980px] mx-auto rounded-lg shadow-md pt-6 sm:p-6 divide-y divide-gray-200"
   >
     <!-- Loading State -->
     <div v-if="isLoading" class="text-center text-gray-600 py-10">

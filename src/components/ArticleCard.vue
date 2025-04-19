@@ -303,7 +303,7 @@ function toggleKeyImplication() {
         </ul>
       </div>
 
-      <!-- Key Implication (Conditional & Styled) -->
+      <!-- Key Implication (Conditional) -->
       <div
         v-if="isKeyImplicationExpanded && article.key_implication"
         class="text-gray-700 mt-4 bg-gray-100 px-3 py-2 rounded-md mb-4"
@@ -311,7 +311,7 @@ function toggleKeyImplication() {
         <span class="block text-sm text-gray-500 font-medium mb-1"
           >Key Implication</span
         >
-        <div class="text-base text-gray-600">
+        <div class="text-gray-700">
           {{ article.key_implication }}
         </div>
       </div>
@@ -320,8 +320,12 @@ function toggleKeyImplication() {
       <div
         v-if="isParagraphSummaryExpanded && article.paragraph_summary"
         class="text-gray-700 mt-4 bg-gray-100 px-3 py-2 rounded-md prose max-w-none"
-        v-html="formattedParagraphSummary"
-      ></div>
+      >
+        <span class="block text-sm text-gray-500 font-medium mb-1"
+          >Main Points</span
+        >
+        <div class="text-gray-700" v-html="formattedParagraphSummary"></div>
+      </div>
     </div>
   </article>
 </template>
