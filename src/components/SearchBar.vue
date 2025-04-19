@@ -17,6 +17,14 @@ const value = computed({
   set: (v) => emit("update:modelValue", v),
 });
 
+// Theme overrides for the input component
+const inputThemeOverrides = {
+  borderHover: "1px solid #2080f0", // Naive UI primary blue
+  borderFocus: "1px solid #2080f0", // Naive UI primary blue
+  boxShadowFocus: "0 0 0 2px rgba(32, 128, 240, 0.2)", // Blue focus ring
+  borderRadius: "0.375rem", // Match button's rounded-md
+};
+
 function handleSearch() {
   emit("search");
 }
@@ -32,6 +40,7 @@ function handleSearch() {
       clearable
       @keyup.enter="handleSearch"
       class="flex-grow"
+      :theme-overrides="inputThemeOverrides"
     >
       <template #prefix>
         <NIcon>

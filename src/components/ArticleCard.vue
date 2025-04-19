@@ -1,10 +1,18 @@
 <script setup>
 import { ref, computed } from "vue";
 import {
+  World as IconWorld,
+  Scale as IconScale,
+  ShieldLock as IconShieldLock,
+  Cpu as IconCpu,
+  Heart as IconHeart,
+  Tag as IconTag,
   ListDetails as IconListDetails,
   ExternalLink as IconExternalLink,
   Key as IconKey,
+  BuildingBank as IconBuildingBank,
 } from "@vicons/tabler";
+import { NTooltip, NButton } from "naive-ui";
 import { formatDate, formatTagForDisplay } from "../utils/formatters";
 import MarkdownIt from "markdown-it";
 
@@ -21,6 +29,16 @@ const isParagraphSummaryExpanded = ref(false);
 const isKeyImplicationExpanded = ref(false);
 const md = new MarkdownIt(); // Initialize markdown-it
 
+// --- Mappings ---
+const clusterIconMap = {
+  "Forecasting & World Modeling": IconWorld,
+  "AI Governance & Policy": IconScale,
+  "Core AI Safety & Alignment": IconShieldLock,
+  "Technical ML Safety": IconCpu,
+  "Philosophy & Foundations": IconBuildingBank,
+  "Effective Altruism & Meta": IconHeart,
+};
+
 // --- Computed ---
 const formattedParagraphSummary = computed(() => {
   if (!props.article.paragraph_summary) {
@@ -28,6 +46,29 @@ const formattedParagraphSummary = computed(() => {
   }
   // Render the paragraph_summary (assumed to be Markdown) to HTML
   return md.render(props.article.paragraph_summary);
+});
+
+const ClusterIcon = computed(
+  () => clusterIconMap[props.article.cluster_tag] || IconTag // fallback
+);
+
+// Computed property for the full author list tooltip content
+const fullAuthorList = computed(() => {
+  return props.article.authors?.join(", ") || "";
+});
+
+// --- Computed: Filtered Topics ---
+const filteredTopics = computed(() => {
+  if (!props.article.topics) {
+    return [];
+  }
+  if (props.article.cluster_tag === "AI Governance & Policy") {
+    return props.article.topics.filter((topic) => topic !== "AI governance");
+  }
+  if (props.article.cluster_tag === "Forecasting & World Modeling") {
+    return props.article.topics.filter((topic) => topic !== "Forecasting");
+  }
+  return props.article.topics;
 });
 
 // --- Methods ---
@@ -44,92 +85,62 @@ function toggleKeyImplication() {
   <article class="bg-white px-6">
     <!-- Top Section: Image on Left, Info on Right -->
     <div class="flex flex-col md:flex-row gap-4 mb-4">
-      <div v-if="article.image_url" class="md:w-1/4 flex-shrink-0">
+      <div v-if="article.image_url" class="md:w-1/4 flex-shrink-0 max-w-sm">
         <a
           :href="article.source_url"
           target="_blank"
           rel="noopener noreferrer"
           :title="'Open ' + (article.source_type || 'link') + ' in new tab'"
+          class="block aspect-[3/2]"
         >
           <img
             :src="article.image_url"
             alt=""
-            class="w-full h-32 object-cover rounded-md hover:opacity-80 transition-opacity"
+            class="w-full h-full object-cover rounded-md hover:opacity-80 transition-opacity"
           />
         </a>
       </div>
 
       <div class="flex-grow text-left">
-        <div class="flex justify-between items-start mb-3">
+        <div class="flex justify-between items-start mb-2">
           <h2 class="text-2xl font-bold text-gray-900 mr-4">
             {{ article.title }}
           </h2>
         </div>
 
-        <!-- Metadata: Authors, Date, Topics -->
-        <div
-          class="text-sm text-gray-500 mb-4 flex flex-wrap items-center gap-x-3 gap-y-1"
+        <!-- Metadata: Cluster Tag & Topics -->
+        <ul
+          class="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm text-gray-500 mb-2 mt-4"
         >
-          <!-- Authors -->
-          <div class="flex items-center gap-x-1.5">
-            <div
-              v-if="!article.authors || article.authors.length === 0"
-              class="inline-flex items-center"
-            >
-              <!-- <img
-                src="https://pbs.twimg.com/profile_images/1764332051195428864/Mc3cZJA9_400x400.jpg"
-                alt="Author profile picture"
-                class="h-5 w-5 rounded-full mr-1 align-middle object-cover"
-              /> -->
-              <span class="text-sm text-gray-600">Unknown Author</span>
-            </div>
-            <div
-              v-else
-              v-for="(author, index) in article.authors"
-              :key="author"
-              class="inline-flex items-center"
-            >
-              <!-- <img
-                src="https://pbs.twimg.com/profile_images/1764332051195428864/Mc3cZJA9_400x400.jpg"
-                alt="Author profile picture"
-                class="h-5 w-5 rounded-full mr-1 align-middle object-cover"
-              /> -->
-              <span class="text-sm text-gray-600">
-                {{ author }}
-              </span>
-              <span v-if="index < article.authors.length - 1" class="mx-0.5"
-                >,</span
-              >
-            </div>
-          </div>
-
-          <span class="text-gray-300 hidden md:inline">|</span>
-
-          <!-- Date -->
-          <span class="whitespace-nowrap">{{
-            formatDate(article.published_date)
-          }}</span>
-
-          <span class="text-gray-300 hidden md:inline">|</span>
-
-          <!-- Topics (inline) -->
-          <span
-            v-if="article.topics && article.topics.length"
-            class="inline-flex items-center flex-wrap gap-1"
-          >
-            <!-- Display first 4 topics -->
+          <!-- Cluster Tag -->
+          <li v-if="article.cluster_tag" class="inline-flex items-center">
             <span
-              v-for="topic in article.topics.slice(0, 4)"
-              :key="topic"
-              class="inline-block bg-gray-100 rounded px-1.5 py-0.5 text-sm text-gray-500"
+              class="inline-flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded-md ring-1 ring-inset ring-blue-200"
+            >
+              <component
+                :is="ClusterIcon"
+                class="w-4 h-4 mr-1"
+                stroke-width="1"
+              />
+              {{ formatTagForDisplay(article.cluster_tag) }}
+            </span>
+          </li>
+          <!-- Topic Chips -->
+          <li
+            v-for="topic in filteredTopics.slice(0, 4)"
+            :key="topic"
+            class="inline-flex items-center"
+          >
+            <span
+              class="inline-block bg-gray-100 rounded-full px-2.5 py-1 text-xs text-gray-600 leading-tight ring-1 ring-inset ring-gray-200"
             >
               {{ formatTagForDisplay(topic) }}
             </span>
-          </span>
-        </div>
+          </li>
+        </ul>
 
-        <!-- Authors with Placeholders -->
-        <!-- Removed this section as it's now part of the metadata above -->
+        <!-- Row 2 – topics -->
+        <!-- Removed the separate div for topics -->
       </div>
     </div>
 
@@ -138,7 +149,7 @@ function toggleKeyImplication() {
       <!-- Sentence Summary -->
       <p
         v-if="article.sentence_summary"
-        class="text-gray-700 mb-4 bg-gray-100 px-3 py-2 rounded-md"
+        class="text-gray-700 mb-3 bg-gray-100 px-3 py-2 rounded-md"
       >
         {{ article.sentence_summary }}
       </p>
@@ -159,49 +170,137 @@ function toggleKeyImplication() {
         </div>
       </div>
 
-      <!-- Actions -->
-      <div class="flex items-center flex-wrap gap-2 mb-4">
-        <button
-          v-if="article.paragraph_summary"
-          @click="toggleParagraphSummary"
-          class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded text-sm flex items-center"
-        >
-          <IconListDetails class="w-4 h-4 mr-1.5" stroke-width="2" />
-          {{ isParagraphSummaryExpanded ? "Hide Main Points" : "Main Points" }}
-        </button>
-        <button
-          v-if="article.key_implication"
-          @click="toggleKeyImplication"
-          class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded text-sm flex items-center"
-          :title="
-            isKeyImplicationExpanded
-              ? 'Hide Key Implication'
-              : 'Show Key Implication'
-          "
-        >
-          <IconKey class="w-4 h-4 mr-1.5" stroke-width="2" />
-          {{
-            isKeyImplicationExpanded
-              ? "Hide Key Implication"
-              : "Key Implication"
-          }}
-        </button>
-        <a
-          :href="article.source_url"
-          class="bg-gray-100 hover:bg-gray-200 text-gray-700 px-2.5 py-1 rounded text-sm flex items-center no-underline"
-          target="_blank"
-          rel="noopener noreferrer"
-          :title="'Open ' + (article.source_type || 'link') + ' in new tab'"
-        >
-          <IconExternalLink class="w-4 h-4 mr-1.5" stroke-width="2" />
-          <span v-if="article.source_type">
-            {{
-              article.source_type.charAt(0).toUpperCase() +
-              article.source_type.slice(1)
-            }}</span
+      <!-- Actions and Author/Date -->
+      <div
+        class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 mt-4"
+      >
+        <!-- Action Buttons (Left Side) -->
+        <div class="flex items-center flex-wrap gap-2">
+          <n-button
+            v-if="article.paragraph_summary"
+            @click="toggleParagraphSummary"
+            size="small"
           >
-          <span v-else>Open Link</span>
-        </a>
+            <template #icon>
+              <IconListDetails stroke-width="2" />
+            </template>
+            {{
+              isParagraphSummaryExpanded ? "Hide Main Points" : "Main Points"
+            }}
+          </n-button>
+          <n-button
+            v-if="article.key_implication"
+            @click="toggleKeyImplication"
+            size="small"
+            :title="
+              isKeyImplicationExpanded
+                ? 'Hide Key Implication'
+                : 'Show Key Implication'
+            "
+          >
+            <template #icon>
+              <IconKey stroke-width="2" />
+            </template>
+            {{
+              isKeyImplicationExpanded
+                ? "Hide Key Implication"
+                : "Key Implication"
+            }}
+          </n-button>
+          <n-button
+            tag="a"
+            :href="article.source_url"
+            size="small"
+            target="_blank"
+            rel="noopener noreferrer"
+            :title="`Open ${article.source_type || 'link'} in new tab`"
+          >
+            <template #icon>
+              <IconExternalLink stroke-width="2" />
+            </template>
+            <span v-if="article.source_type">
+              {{
+                article.source_type.charAt(0).toUpperCase() +
+                article.source_type.slice(1)
+              }}</span
+            >
+            <span v-else>Open Link</span>
+          </n-button>
+        </div>
+
+        <!-- Author & Date (Right Side) - MOVED HERE -->
+        <ul
+          class="flex justify-start sm:justify-end flex-wrap items-center gap-x-1.5 text-sm text-gray-500 mt-2 sm:mt-0"
+        >
+          <!-- Authors -->
+          <li
+            v-if="!article.authors || article.authors.length === 0"
+            class="inline-flex items-center"
+          >
+            <span class="text-sm text-gray-500">Unknown Author</span>
+          </li>
+          <template v-else>
+            <!-- Wrap truncated authors in NTooltip -->
+            <n-tooltip trigger="hover" v-if="article.authors.length > 3">
+              <template #trigger>
+                <span class="inline-flex items-center flex-wrap gap-x-1.5">
+                  <!-- Wrapper span for trigger area -->
+                  <li
+                    v-for="(author, index) in article.authors.slice(0, 3)"
+                    :key="author"
+                    class="inline-flex items-center"
+                  >
+                    <span class="text-sm text-gray-500">{{ author }}</span>
+                    <span
+                      v-if="
+                        index < 2 || (index === 2 && article.authors.length > 3)
+                      "
+                      class="mx-0.5"
+                      >,</span
+                    >
+                  </li>
+                  <li
+                    v-if="article.authors.length > 3"
+                    class="inline-flex items-center ml-1"
+                  >
+                    <span class="text-sm text-gray-500">Et al.</span>
+                  </li>
+                </span>
+              </template>
+              {{ fullAuthorList }}
+            </n-tooltip>
+            <!-- Show full list directly if not truncated -->
+            <template v-else>
+              <li
+                v-for="(author, index) in article.authors"
+                :key="author"
+                class="inline-flex items-center"
+              >
+                <span class="text-sm text-gray-500">{{ author }}</span>
+                <span v-if="index < article.authors.length - 1" class="mx-0.5"
+                  >,</span
+                >
+              </li>
+            </template>
+          </template>
+
+          <!-- Separator -->
+          <li
+            v-if="
+              article.authors &&
+              article.authors.length > 0 &&
+              article.published_date
+            "
+            class="text-gray-400"
+          >
+            •
+          </li>
+
+          <!-- Date -->
+          <li v-if="article.published_date" class="whitespace-nowrap">
+            {{ formatDate(article.published_date) }}
+          </li>
+        </ul>
       </div>
 
       <!-- Key Implication (Conditional & Styled) -->
