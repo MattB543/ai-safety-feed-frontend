@@ -63,7 +63,7 @@ const emit = defineEmits(["clear-filters", "show-similar"]);
       <li
         v-for="article in articles"
         :key="article.id || article.source_url"
-        class="pt-14 pb-6 first:pt-0 last:pb-0"
+        class="pt-14 pb-6 first:pt-0"
       >
         <!-- Removed conditional border class -->
         <ArticleCard

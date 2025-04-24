@@ -10,7 +10,7 @@ import {
   BuildingBank as IconBuildingBank,
 } from "@vicons/tabler";
 import { NButton } from "naive-ui";
-import { formatTagForDisplay } from "../utils/formatters";
+import { formatTagForDisplay, formatDate } from "../utils/formatters";
 import MarkdownIt from "markdown-it";
 
 // --- Props ---
@@ -127,23 +127,42 @@ const filteredTopics = computed(() => {
     <!-- Summary (Markdown or Sentence) -->
     <div
       v-if="formattedSummary"
-      class="prose prose-sm max-w-none text-gray-600 mb-3"
+      class="prose prose-sm max-w-none text-gray-600 mb-3 bg-gray-100 px-3 py-2 rounded-md"
       v-html="formattedSummary"
     ></div>
-    <p v-else-if="article.sentence_summary" class="text-sm text-gray-600 mb-3">
+    <p
+      v-else-if="article.sentence_summary"
+      class="text-sm text-gray-600 mb-3 bg-gray-100 px-3 py-2 rounded-md"
+    >
       {{ article.sentence_summary }}
     </p>
     <div
       v-else-if="formattedParagraphSummary"
-      class="prose prose-sm max-w-none text-gray-600 mb-3"
+      class="prose prose-sm max-w-none text-gray-600 mb-3 bg-gray-100 px-3 py-2 rounded-md"
       v-html="formattedParagraphSummary"
     ></div>
 
-    <!-- Footer: Author & View Button -->
-    <div class="flex items-center justify-between mt-2">
-      <span v-if="displayAuthors" class="text-xs text-gray-500">
-        {{ displayAuthors }}
-      </span>
+    <!-- Footer: Author, Date & View Button -->
+    <div
+      class="flex flex-col sm:flex-row items-start sm:items-center justify-between mt-2 gap-y-2"
+    >
+      <div class="flex items-center gap-x-1.5 text-xs text-gray-500">
+        <!-- Author -->
+        <span v-if="displayAuthors">
+          {{ displayAuthors }}
+        </span>
+        <!-- Separator -->
+        <span
+          v-if="displayAuthors && article.published_date"
+          class="text-gray-400"
+        >
+          •
+        </span>
+        <!-- Date -->
+        <span v-if="article.published_date" class="whitespace-nowrap">
+          {{ formatDate(article.published_date) }}
+        </span>
+      </div>
       <NButton
         size="tiny"
         type="primary"

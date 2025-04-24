@@ -8,9 +8,9 @@ import {
   Heart as IconHeart,
   Tag as IconTag,
   ListDetails as IconListDetails,
-  ExternalLink as IconExternalLink,
   Key as IconKey,
   BuildingBank as IconBuildingBank,
+  ListSearch as IconListSearch,
 } from "@vicons/tabler";
 import { NTooltip, NButton } from "naive-ui";
 import { formatDate, formatTagForDisplay } from "../utils/formatters";
@@ -63,16 +63,30 @@ const filteredTopics = computed(() => {
   if (!props.article.topics) {
     return [];
   }
-  if (props.article.cluster_tag === "AI Governance & Policy") {
-    return props.article.topics.filter((topic) => topic !== "AI governance");
+  const cluster = props.article.cluster_tag;
+  const topics = props.article.topics;
+
+  if (cluster === "AI Governance & Policy") {
+    return topics.filter(
+      (topic) => topic !== "AI governance" && topic !== "Policy"
+    );
   }
-  if (props.article.cluster_tag === "Forecasting & World Modeling") {
-    return props.article.topics.filter((topic) => topic !== "Forecasting");
+  if (cluster === "Forecasting & World Modeling") {
+    return topics.filter(
+      (topic) => topic !== "Forecasting" && topic !== "World modeling"
+    );
   }
-  if (props.article.cluster_tag === "Biorisk & Other GCRs") {
-    return props.article.topics.filter((topic) => topic !== "Biorisk");
+  if (cluster === "Biorisk & Other GCRs") {
+    return topics.filter(
+      (topic) => topic !== "Biorisk" && topic !== "Global catastrophic risk"
+    );
   }
-  return props.article.topics;
+  if (cluster === "Core AI Safety & Alignment") {
+    return topics.filter((topic) => topic !== "AI alignment");
+  }
+
+  // Default: return all topics if no specific cluster filter applies
+  return topics;
 });
 
 // --- Methods ---
@@ -108,14 +122,15 @@ function toggleKeyImplication() {
       <div class="flex-grow text-left">
         <div class="flex justify-between items-start mb-2">
           <h2 class="text-2xl font-bold text-gray-900 mr-4">
-            <span
+            <a
+              :href="article.source_url"
+              target="_blank"
+              rel="noopener noreferrer"
+              :title="'Open ' + (article.source_type || 'link') + ' in new tab'"
               class="cursor-pointer hover:underline"
-              @click="$emit('view-article', article.id)"
-              role="button"
-              :aria-label="`View details for ${article.title}`"
             >
               {{ article.title }}
-            </span>
+            </a>
           </h2>
         </div>
 
@@ -138,7 +153,7 @@ function toggleKeyImplication() {
           </li>
           <!-- Topic Chips -->
           <li
-            v-for="topic in filteredTopics.slice(0, 4)"
+            v-for="topic in filteredTopics.slice(0, 3)"
             :key="topic"
             class="inline-flex items-center"
           >
@@ -193,7 +208,7 @@ function toggleKeyImplication() {
             size="small"
           >
             <template #icon>
-              <IconListDetails stroke-width="2" />
+              <IconListDetails stroke-width="2" class="w-4 h-4" />
             </template>
             {{
               isParagraphSummaryExpanded ? "Hide Main Points" : "Main Points"
@@ -208,7 +223,7 @@ function toggleKeyImplication() {
             "
           >
             <template #icon>
-              <IconKey stroke-width="2" />
+              <IconKey stroke-width="2" class="w-4 h-4" />
             </template>
             {{ isKeyImplicationExpanded ? "Hide Implication" : "Implication" }}
           </n-button>
@@ -219,22 +234,11 @@ function toggleKeyImplication() {
               emit('show-similar', { id: article.id, title: article.title })
             "
           >
+            <template #icon>
+              <IconListSearch stroke-width="2" class="w-4 h-4" />
+            </template>
             Similar Posts
           </n-button>
-          <a
-            :href="article.source_url"
-            target="_blank"
-            rel="noopener noreferrer"
-            :title="'Open ' + (article.source_type || 'link') + ' in new tab'"
-            class="inline-flex items-center text-xs text-blue-600 hover:text-blue-800"
-          >
-            <n-button size="small">
-              <template #icon>
-                <IconExternalLink stroke-width="2" />
-              </template>
-              Source
-            </n-button>
-          </a>
         </div>
 
         <!-- Author & Date (Right Side) - MOVED HERE -->

@@ -1,5 +1,5 @@
 <script setup>
-import { watch, computed, ref } from "vue";
+import { watch, computed, ref, nextTick } from "vue";
 import { useArticles } from "./composables/useArticles";
 import AppHeader from "./components/AppHeader.vue";
 import AppFooter from "./components/AppFooter.vue";
@@ -9,6 +9,7 @@ import SourceFilters from "./components/SourceFilters.vue";
 import TagFilters from "./components/TagFilters.vue";
 import IntroCard from "./components/IntroCard.vue";
 import SimilarDrawer from "./components/SimilarDrawer.vue";
+import { ListSearch as IconListSearch } from "@vicons/tabler";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -63,19 +64,32 @@ watch([activeSources, activeTags], () => {
 const drawerOpen = ref(false);
 const drawerTarget = ref(null); // id of the reference post
 const drawerTargetTitle = ref(""); // title of the reference post
+const showReopenBtn = ref(false); // ★ new
+const similarDrawerRef = ref(null); // ref for the drawer component
 
 // Watch for drawer state changes to adjust body padding
 watch(drawerOpen, (isOpen) => {
-  if (isOpen) {
-    // Check if scrollbar exists before adding padding
-    const scrollbarWidth =
-      window.innerWidth - document.documentElement.clientWidth;
-    document.body.style.paddingRight = `${420 + scrollbarWidth}px`; // Adjust for drawer width + potential scrollbar
-    document.body.style.overflow = "hidden"; // Prevent body scrolling when drawer is open
-  } else {
-    document.body.style.paddingRight = "";
-    document.body.style.overflow = ""; // Restore body scrolling
-  }
+  nextTick(() => {
+    // Wait for DOM update
+    if (isOpen) {
+      const drawerElement = similarDrawerRef.value?.$el; // Access drawer's root element
+      if (drawerElement) {
+        const drawerWidth = drawerElement.offsetWidth;
+        const scrollbarWidth =
+          window.innerWidth - document.documentElement.clientWidth;
+        document.body.style.paddingRight = `${drawerWidth + scrollbarWidth}px`;
+      } else {
+        // Fallback or initial state (optional)
+        const scrollbarWidth =
+          window.innerWidth - document.documentElement.clientWidth;
+        document.body.style.paddingRight = `${420 + scrollbarWidth}px`; // Keep fallback just in case?
+      }
+      // document.body.style.overflow = "hidden";
+    } else {
+      document.body.style.paddingRight = "";
+      // document.body.style.overflow = "";
+    }
+  });
 });
 
 function openSimilar(payload) {
@@ -85,10 +99,32 @@ function openSimilar(payload) {
 }
 
 function scrollToArticle(id) {
-  const element = document.getElementById(`article-${id}`);
-  if (element) {
-    element.scrollIntoView({ behavior: "smooth", block: "center" });
+  // 1. close first
+  drawerOpen.value = false;
+  // Set the reopen button flag if a target exists
+  if (drawerTarget.value !== null) {
+    showReopenBtn.value = true;
   }
+
+  // 2. after the DOM re-renders, do the scroll
+  nextTick(() => {
+    const element = document.getElementById(`article-${id}`);
+    if (element) {
+      // offset so the fixed header doesn't cover the title
+      const headerH = document.querySelector("header")?.offsetHeight ?? 0;
+      const top =
+        element.getBoundingClientRect().top + window.pageYOffset - headerH - 8; // Added 8px buffer
+
+      window.scrollTo({ top, behavior: "smooth" });
+
+      // Original mobile-only close logic removed as drawer is closed first now
+      // if (window.innerWidth < 768 && drawerOpen.value) {
+      //   setTimeout(() => {
+      //     drawerOpen.value = false;
+      //   }, 100); // 100ms delay
+      // }
+    }
+  });
 }
 </script>
 
@@ -155,11 +191,28 @@ function scrollToArticle(id) {
     <AppFooter />
 
     <SimilarDrawer
+      ref="similarDrawerRef"
       v-model:show="drawerOpen"
       :articleId="drawerTarget"
       :reference-article-title="drawerTargetTitle"
       @scroll-to-article="scrollToArticle"
       :style="{ '--n-mask-color': 'rgba(0, 0, 0, 0.2)' }"
+      @update:show="
+        (v) => {
+          drawerOpen = v;
+          showReopenBtn = !v && drawerTarget !== null; // show button when closed if target exists
+        }
+      "
     />
+
+    <!-- Re-open FAB -->
+    <button
+      v-if="showReopenBtn"
+      @click="drawerOpen = true"
+      class="fixed bottom-4 right-4 md:bottom-6 md:right-6 bg-gray-500 text-white rounded-full p-2 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+      aria-label="Re-open similar posts drawer"
+    >
+      <IconListSearch stroke-width="2" class="h-4 w-4" />
+    </button>
   </div>
 </template>
