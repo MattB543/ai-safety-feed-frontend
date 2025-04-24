@@ -8,6 +8,10 @@ const props = defineProps({
   show: Boolean, // controls open / close
   articleId: Number, // reference article
   referenceArticleTitle: String, // title of the reference article
+  isScrollingToArticle: {
+    type: Boolean,
+    default: false,
+  },
 });
 const emit = defineEmits(["update:show", "scroll-to-article"]);
 
@@ -109,13 +113,13 @@ const startMessageStagger = () => {
   showMsg1.value = true; // Show first immediately
   msg2Timeout.value = setTimeout(() => {
     if (loading.value) showMsg2.value = true;
-  }, 4000);
+  }, 5000);
   msg3Timeout.value = setTimeout(() => {
     if (loading.value) showMsg3.value = true;
-  }, 8000);
+  }, 9000);
   msg4Timeout.value = setTimeout(() => {
     if (loading.value) showMsg4.value = true;
-  }, 12000);
+  }, 13000);
 };
 
 // Helper function to reset messages and clear timeouts
@@ -147,6 +151,8 @@ watch(
 );
 
 const handleScrollRequest = (articleId) => {
+  // Prevent emitting if already scrolling/loading the target
+  if (props.isScrollingToArticle) return;
   emit("scroll-to-article", articleId);
   // NOTE: We are *not* emitting update:show here,
   // allowing the parent or user interaction to close the drawer.
@@ -174,7 +180,9 @@ const handleScrollRequest = (articleId) => {
       <div v-if="loading" class="py-10 flex flex-col items-center space-y-4">
         <div class="w-full max-w-sm px-4 text-left space-y-2 mt-4">
           <transition name="fade-up">
-            <p v-if="showMsg1" class="text-gray-600">Comparing all posts...</p>
+            <p v-if="showMsg1" class="text-gray-600">
+              Comparing all 300 posts...
+            </p>
           </transition>
           <transition name="fade-up">
             <p v-if="showMsg2" class="text-gray-600">
@@ -182,7 +190,9 @@ const handleScrollRequest = (articleId) => {
             </p>
           </transition>
           <transition name="fade-up">
-            <p v-if="showMsg3" class="text-gray-600">Asking AI to re-rank...</p>
+            <p v-if="showMsg3" class="text-gray-600">
+              Asking AI to rank them...
+            </p>
           </transition>
           <transition name="fade-up">
             <p v-if="showMsg4" class="text-gray-600">
@@ -209,6 +219,7 @@ const handleScrollRequest = (articleId) => {
         >
           <TinyArticleCard
             :article="a"
+            :is-scrolling-to-article="isScrollingToArticle"
             @scroll-to-article="handleScrollRequest"
           />
         </li>

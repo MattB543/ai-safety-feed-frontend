@@ -28,6 +28,9 @@ const {
   availableTags,
   activeTags,
   updateActiveTags,
+  allLoaded,
+  fetchArticlesUntilAllLoadedInBackground,
+  ensureArticleLoaded,
 } = useArticles();
 
 // Computed property to check if any filter is active
@@ -42,89 +45,83 @@ const isFilterActive = computed(() => {
 // Function to trigger search
 function handleSearch() {
   queryTerm.value = searchTerm.value.trim();
-  fetchArticles();
 }
 
 // Function to clear search/filters
 function clearFilters() {
   searchTerm.value = "";
+  queryTerm.value = "";
   // Reset sources to all available
   updateActiveSources(availableSources.value);
   // Reset tags to all available
   updateActiveTags(availableTags.value.map((t) => t.tag));
-  // No need to call handleSearch here as updateActiveSources/Tags trigger fetchArticles
 }
-
-// Watch for changes in activeSources, activeTags, and searchTerm to refetch articles
-watch([activeSources, activeTags], () => {
-  // TODO: Consider adding debouncing for searchTerm
-  fetchArticles();
-});
 
 const drawerOpen = ref(false);
 const drawerTarget = ref(null); // id of the reference post
 const drawerTargetTitle = ref(""); // title of the reference post
-const showReopenBtn = ref(false); // ★ new
-const similarDrawerRef = ref(null); // ref for the drawer component
-
-// Watch for drawer state changes to adjust body padding
-watch(drawerOpen, (isOpen) => {
-  nextTick(() => {
-    // Wait for DOM update
-    if (isOpen) {
-      const drawerElement = similarDrawerRef.value?.$el; // Access drawer's root element
-      if (drawerElement) {
-        const drawerWidth = drawerElement.offsetWidth;
-        const scrollbarWidth =
-          window.innerWidth - document.documentElement.clientWidth;
-        document.body.style.paddingRight = `${drawerWidth + scrollbarWidth}px`;
-      } else {
-        // Fallback or initial state (optional)
-        const scrollbarWidth =
-          window.innerWidth - document.documentElement.clientWidth;
-        document.body.style.paddingRight = `${420 + scrollbarWidth}px`; // Keep fallback just in case?
-      }
-      // document.body.style.overflow = "hidden";
-    } else {
-      document.body.style.paddingRight = "";
-      // document.body.style.overflow = "";
-    }
-  });
-});
+const showReopenBtn = ref(false);
+const similarDrawerRef = ref(null);
+const isScrollingToArticle = ref(false); // Loading state for scroll-to-article
 
 function openSimilar(payload) {
   drawerTarget.value = payload.id;
   drawerTargetTitle.value = payload.title;
   drawerOpen.value = true;
+  // Pre-fetch all articles in the background when opening the drawer
+  fetchArticlesUntilAllLoadedInBackground();
 }
 
-function scrollToArticle(id) {
-  // 1. close first
-  drawerOpen.value = false;
-  // Set the reopen button flag if a target exists
-  if (drawerTarget.value !== null) {
-    showReopenBtn.value = true;
-  }
+async function scrollToArticle(id) {
+  isScrollingToArticle.value = true; // Start loading indicator
+  showReopenBtn.value = drawerTarget.value !== null;
 
-  // 2. after the DOM re-renders, do the scroll
-  nextTick(() => {
-    const element = document.getElementById(`article-${id}`);
+  try {
+    // 1. Ensure the article is loaded (fetch if necessary)
+    const loaded = await ensureArticleLoaded(id);
+
+    if (!loaded) {
+      // Handle case where article couldn't be loaded (e.g., 404)
+      // Error state is likely set in useArticles, maybe show a toast?
+      console.warn(
+        `scrollToArticle: Failed to ensure article ${id} is loaded.`
+      );
+      // Optionally clear the drawer target if the post vanished?
+      // drawerTarget.value = null;
+      // showReopenBtn.value = false;
+      isScrollingToArticle.value = false;
+      return; // Stop if article not found/loaded
+    }
+
+    // 2. Wait for DOM update and scroll
+    await nextTick();
+    const element = document.getElementById(`article-${id}`); // Assuming ArticleCard has id=`article-${id}`
     if (element) {
-      // offset so the fixed header doesn't cover the title
       const headerH = document.querySelector("header")?.offsetHeight ?? 0;
       const top =
-        element.getBoundingClientRect().top + window.pageYOffset - headerH - 8; // Added 8px buffer
+        element.getBoundingClientRect().top + window.pageYOffset - headerH - 16; // Added 16px buffer
 
       window.scrollTo({ top, behavior: "smooth" });
-
-      // Original mobile-only close logic removed as drawer is closed first now
-      // if (window.innerWidth < 768 && drawerOpen.value) {
-      //   setTimeout(() => {
-      //     drawerOpen.value = false;
-      //   }, 100); // 100ms delay
-      // }
+    } else {
+      console.warn(
+        `scrollToArticle: Element with ID article-${id} not found after loading.`
+      );
     }
-  });
+  } catch (err) {
+    console.error(
+      `scrollToArticle: Error during scroll/load for article ${id}:`,
+      err
+    );
+    // Handle unexpected errors, maybe show a toast
+  } finally {
+    isScrollingToArticle.value = false; // Stop loading indicator
+  }
+}
+
+// --- Handle Load More Event ---
+function handleLoadMore() {
+  // console.log("App.vue: Received load-more event");
+  fetchArticles({ append: true });
 }
 </script>
 
@@ -134,7 +131,10 @@ function scrollToArticle(id) {
     <AppHeader :API_BASE_URL="API_BASE_URL" />
 
     <!-- Main Content -->
-    <main class="flex-grow w-full py-8 px-4">
+    <main
+      class="flex-grow w-full py-8 px-4 transition-padding duration-300 ease-in-out"
+      :class="{ 'main-padded': drawerOpen }"
+    >
       <!-- intro card -->
       <IntroCard class="max-w-[980px] mx-auto mb-8" />
 
@@ -177,13 +177,15 @@ function scrollToArticle(id) {
         </div>
       </div>
 
-      <!-- Use ArticleList component, passing necessary props and listening for clear-filters -->
+      <!-- Pass allLoaded prop and handle load-more event -->
       <ArticleList
         :articles="articles"
         :isLoading="isLoading"
         :error="error"
+        :allLoaded="allLoaded"
         @clear-filters="clearFilters"
         @show-similar="openSimilar"
+        @load-more="handleLoadMore"
       />
     </main>
 
@@ -196,11 +198,12 @@ function scrollToArticle(id) {
       :articleId="drawerTarget"
       :reference-article-title="drawerTargetTitle"
       @scroll-to-article="scrollToArticle"
+      :is-scrolling-to-article="isScrollingToArticle"
       :style="{ '--n-mask-color': 'rgba(0, 0, 0, 0.2)' }"
       @update:show="
         (v) => {
           drawerOpen = v;
-          showReopenBtn = !v && drawerTarget !== null; // show button when closed if target exists
+          showReopenBtn = !v && drawerTarget !== null;
         }
       "
     />
@@ -209,10 +212,33 @@ function scrollToArticle(id) {
     <button
       v-if="showReopenBtn"
       @click="drawerOpen = true"
-      class="fixed bottom-4 right-4 md:bottom-6 md:right-6 bg-gray-500 text-white rounded-full p-2 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
+      class="fixed bottom-4 right-4 md:bottom-6 md:right-6 bg-gray-500 text-white rounded-full p-2 md:p-3 hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-gray-400 focus:ring-offset-2"
       aria-label="Re-open similar posts drawer"
     >
-      <IconListSearch stroke-width="2" class="h-4 w-4" />
+      <IconListSearch stroke-width="2" class="h-4 w-4 md:h-6 md:w-6" />
     </button>
   </div>
 </template>
+
+<style>
+/* Add styles for the main content shift */
+@media (min-width: 768px) {
+  /* Tailwind md breakpoint */
+  .main-padded {
+    padding-right: 550px; /* Add padding equal to drawer width */
+  }
+}
+
+/* Optional: Ensure body scrollbar doesn't cause layout shift *if* needed,
+   but usually browsers handle this ok when margin changes content width */
+/* body {
+  overflow-y: scroll;
+} */
+
+/* Add transition directly if not handled by utility classes */
+main {
+  transition-property: padding-right; /* Transition padding */
+  transition-timing-function: ease-in-out;
+  transition-duration: 300ms;
+}
+</style>

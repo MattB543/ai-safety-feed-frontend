@@ -1,9 +1,17 @@
 <script setup>
-import { defineEmits } from "vue";
+import {
+  defineEmits,
+  defineProps,
+  ref,
+  onMounted,
+  onBeforeUnmount,
+  watch,
+  nextTick,
+} from "vue";
 import ArticleCard from "./ArticleCard.vue";
 
-// --- Props ---
-defineProps({
+// --- Props --- Get access to props for observer callback and template
+const props = defineProps({
   articles: {
     type: Array,
     required: true,
@@ -16,10 +24,91 @@ defineProps({
     type: String,
     default: null,
   },
+  // Need this from the parent component using useArticles
+  allLoaded: {
+    type: Boolean,
+    required: true,
+  },
 });
 
 // --- Emits ---
-const emit = defineEmits(["clear-filters", "show-similar"]);
+const emit = defineEmits(["clear-filters", "show-similar", "load-more"]); // Added "load-more"
+
+// --- Infinite Scroll Logic ---
+const loadMoreTrigger = ref(null); // Template ref for the sentinel div
+let observer = null;
+
+const setupObserver = () => {
+  // Ensure previous observer is disconnected before creating a new one
+  if (observer) {
+    observer.disconnect();
+  }
+
+  // Only setup observer if the trigger element exists in the DOM
+  if (!loadMoreTrigger.value) {
+    // console.log("setupObserver: loadMoreTrigger ref not found, skipping setup.");
+    return;
+  }
+
+  observer = new IntersectionObserver(
+    (entries) => {
+      const entry = entries[0];
+      // Use props directly inside the callback
+      if (entry.isIntersecting && !props.isLoading && !props.allLoaded) {
+        // console.log("Load more trigger intersecting, emitting load-more");
+        emit("load-more"); // Emit event to parent to fetch more
+      }
+    },
+    {
+      root: null, // Use the viewport as the root
+      rootMargin: "600px", // Load significantly before it's fully visible
+      threshold: 0.1, // Trigger when 10% of the element is visible
+    }
+  );
+
+  observer.observe(loadMoreTrigger.value);
+};
+
+onMounted(() => {
+  // Initial setup after component mounts
+  // Use nextTick to ensure the trigger element is rendered
+  nextTick(() => {
+    setupObserver();
+  });
+});
+
+onBeforeUnmount(() => {
+  if (observer) {
+    observer.disconnect();
+    observer = null; // Clean up observer reference
+  }
+});
+
+// Watch for changes that would require resetting the observer
+watch(
+  // Watch multiple sources: articles array identity and allLoaded status
+  [() => props.articles, () => props.allLoaded],
+  ([newArticles, newAllLoaded], [oldArticles, oldAllLoaded]) => {
+    // We need to re-setup the observer if:
+    // 1. The articles array identity changes (e.g., filters applied, list replaced)
+    // 2. All items were loaded, but now they are not (e.g., filters cleared)
+    // 3. The list was empty and now has items (initial load or after clearing filters)
+    const listIdentityChanged = newArticles !== oldArticles;
+    const becameNonEmpty =
+      newArticles.length > 0 && oldArticles && oldArticles.length === 0;
+    const becameLoadable = oldAllLoaded && !newAllLoaded;
+
+    if (listIdentityChanged || becameNonEmpty || becameLoadable) {
+      // console.log("Observer reset condition met. List changed:", listIdentityChanged, "Became non-empty:", becameNonEmpty, "Became loadable:", becameLoadable);
+      // Use nextTick to ensure the DOM (including the loadMoreTrigger div)
+      // has been updated before trying to observe it.
+      nextTick(() => {
+        setupObserver();
+      });
+    }
+  },
+  { deep: false } // No need for deep watch here
+);
 </script>
 
 <template>
@@ -27,7 +116,10 @@ const emit = defineEmits(["clear-filters", "show-similar"]);
     class="bg-white max-w-[980px] mx-auto rounded-lg shadow-md pt-6 sm:p-6 divide-y divide-gray-200"
   >
     <!-- Loading State -->
-    <div v-if="isLoading" class="text-center text-gray-600 py-10">
+    <div
+      v-if="isLoading && articles.length === 0"
+      class="text-center text-gray-600 py-10"
+    >
       <p>Loading articles...</p>
       <p class="text-xs text-gray-500">
         (refresh after 1 minute, the free tier server is starting up)
@@ -46,7 +138,7 @@ const emit = defineEmits(["clear-filters", "show-similar"]);
 
     <!-- No Articles/Results State -->
     <div
-      v-else-if="articles.length === 0"
+      v-else-if="articles.length === 0 && !isLoading"
       class="text-center text-gray-600 py-10 space-y-4"
     >
       <p>No articles found. Try adjusting your search or check back later.</p>
@@ -65,12 +157,24 @@ const emit = defineEmits(["clear-filters", "show-similar"]);
         :key="article.id || article.source_url"
         class="pt-14 pb-6 first:pt-0"
       >
-        <!-- Removed conditional border class -->
         <ArticleCard
           :article="article"
           @show-similar="emit('show-similar', $event)"
         />
       </li>
     </template>
+
+    <!-- Loading indicator for infinite scroll -->
+    <div v-if="isLoading && articles.length > 0" class="text-center py-4">
+      <p class="text-gray-600">Loading more articles...</p>
+    </div>
+
+    <!-- Sentinel Element for Intersection Observer -->
+    <!-- Only render the trigger if there are articles and not all are loaded -->
+    <div
+      v-if="articles.length > 0 && !allLoaded"
+      ref="loadMoreTrigger"
+      class="h-10"
+    ></div>
   </ul>
 </template>

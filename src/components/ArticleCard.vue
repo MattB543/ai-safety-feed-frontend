@@ -229,7 +229,6 @@ function toggleKeyImplication() {
           </n-button>
           <n-button
             size="small"
-            v-if="article.embedding_short || article.embedding_full"
             @click="
               emit('show-similar', { id: article.id, title: article.title })
             "

@@ -9,7 +9,7 @@ import {
   Tag as IconTag,
   BuildingBank as IconBuildingBank,
 } from "@vicons/tabler";
-import { NButton } from "naive-ui";
+import { NButton, NSpin } from "naive-ui";
 import { formatTagForDisplay, formatDate } from "../utils/formatters";
 import MarkdownIt from "markdown-it";
 
@@ -18,6 +18,10 @@ const props = defineProps({
   article: {
     type: Object,
     required: true,
+  },
+  isScrollingToArticle: {
+    type: Boolean,
+    default: false,
   },
 });
 const emit = defineEmits(["scroll-to-article"]);
@@ -167,9 +171,11 @@ const filteredTopics = computed(() => {
         size="tiny"
         type="primary"
         ghost
+        :disabled="isScrollingToArticle"
+        :loading="isScrollingToArticle"
         @click.stop="emit('scroll-to-article', article.id)"
       >
-        View Post
+        <template v-if="!isScrollingToArticle">View Post</template>
       </NButton>
     </div>
   </div>

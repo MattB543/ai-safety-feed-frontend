@@ -13,6 +13,10 @@ export function useArticles() {
   // ---- TAG FILTER STATE ----
   const availableTags = ref([]); // [{ tag, post_count }]
   const activeTags = ref([]); // ["Interpretability", …]
+  // ---- PAGINATION STATE ----
+  const pageSize = 50;
+  const offset = ref(0);
+  const allLoaded = ref(false); // True if the last fetch returned < pageSize items
 
   // --- API Configuration ---
   const API_BASE_URL =
@@ -90,30 +94,43 @@ export function useArticles() {
   }
 
   // Function to fetch articles from the server
-  async function fetchArticles() {
+  async function fetchArticles({ append = false } = {}) {
+    // Don't fetch more if all articles are loaded and we're appending
+    if (append && allLoaded.value) {
+      console.log("fetchArticles: All articles already loaded.");
+      return;
+    }
+
     isLoading.value = true;
     error.value = null;
-    // Don't clear articles immediately, wait for results or error
-    // articles.value = [];
+
+    if (!append) {
+      // Reset pagination state only when not appending (i.e., new filter/search)
+      offset.value = 0;
+      allLoaded.value = false;
+      // Don't clear articles immediately, wait for results or error
+      // articles.value = []; // Let the new results replace them
+    }
 
     try {
       let url = `${API_BASE_URL}/api/content`;
       const params = new URLSearchParams();
 
       if (queryTerm.value) {
-        // Encode the search term for the URL
         params.append("search", queryTerm.value);
       }
 
-      // Added: Append sources if any are active
       if (activeSources.value.length > 0) {
         params.append("sources", activeSources.value.join(","));
       }
 
-      // ---- NEW: TAGS param ------------------------------------
       if (activeTags.value.length) {
         params.append("tags", activeTags.value.join(","));
       }
+
+      // Add pagination parameters
+      params.append("limit", pageSize.toString());
+      params.append("offset", offset.value.toString());
 
       const queryString = params.toString();
       if (queryString) {
@@ -128,15 +145,107 @@ export function useArticles() {
         throw new Error(`HTTP error! Status: ${response.status}`);
       }
 
-      const data = await response.json();
+      const newArticles = await response.json();
 
-      articles.value = data;
+      if (append) {
+        // Prevent duplicates when appending
+        const existingIds = new Set(
+          articles.value.map((a) => a.id || a.source_url)
+        );
+        const uniqueNewArticles = newArticles.filter(
+          (a) => !existingIds.has(a.id || a.source_url)
+        );
+
+        articles.value.push(...uniqueNewArticles);
+        // Keep sorted - Assuming fetch returns date desc
+        // No explicit sort needed if API guarantees order and we only append
+      } else {
+        articles.value = newArticles; // Replace existing articles
+      }
+
+      // Update pagination state
+      offset.value += newArticles.length;
+      if (newArticles.length < pageSize) {
+        allLoaded.value = true; // Mark as all loaded if fewer than pageSize items were returned
+      }
     } catch (err) {
       console.error("Error fetching articles:", err);
       error.value = `Failed to load articles: ${err.message}. Please try again later.`;
-      articles.value = []; // Clear articles on error
+      if (!append) {
+        articles.value = []; // Clear articles only on initial load error
+      }
+      allLoaded.value = true; // Stop trying to load more on error
     } finally {
       isLoading.value = false;
+    }
+  }
+
+  // Helper to load all articles in the background (e.g., for drawer opening)
+  async function fetchArticlesUntilAllLoadedInBackground() {
+    // Prevent concurrent background loading
+    if (isLoading.value || allLoaded.value) return;
+
+    console.log("Starting background fetch until all loaded...");
+    while (!allLoaded.value && !error.value) {
+      // Use a temporary loading flag for background fetches if needed,
+      // or rely on the main isLoading if UI feedback isn't critical here.
+      // Setting isLoading = true might show loading indicator briefly.
+      // isLoading.value = true; // Optional: Indicate background activity
+
+      await fetchArticles({ append: true });
+
+      // Optional: Add a small delay between requests if needed
+      // await new Promise(resolve => setTimeout(resolve, 100));
+    }
+    console.log(
+      "Background fetch finished. All loaded:",
+      allLoaded.value,
+      "Error:",
+      error.value
+    );
+  }
+
+  // Function to fetch a single article by ID if not present
+  async function ensureArticleLoaded(id) {
+    if (articles.value.find((a) => a.id === id)) {
+      return true; // Already loaded
+    }
+
+    // Potentially show a specific loading indicator for this action
+    // isLoading.value = true; // Or a dedicated loading flag
+
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/content/${id}`);
+      if (!response.ok) {
+        if (response.status === 404) {
+          console.warn(`Article with ID ${id} not found.`);
+          // Optionally: Show a user-facing message (e.g., via toast)
+          error.value = `Article ${id} could not be found. It might have been removed.`; // Example error message
+          return false;
+        }
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      const article = await response.json();
+
+      // Add to list and maintain sort order (date descending)
+      articles.value.push(article);
+      articles.value.sort(
+        (a, b) => new Date(b.published_date) - new Date(a.published_date)
+      );
+
+      // Update `offset`? Maybe not, as this is an out-of-band fetch.
+      // Consider if this affects `allLoaded` logic if it happens near the end.
+      // For now, we assume it doesn't significantly impact pagination state.
+
+      return true;
+    } catch (err) {
+      console.error(`Failed to fetch single article ${id}:`, err);
+      // Optionally: Show a user-facing error message
+      error.value = `Failed to load details for article ${id}.`;
+      return false;
+    } finally {
+      // Reset specific loading indicator if used
+      // isLoading.value = false;
     }
   }
 
@@ -150,7 +259,10 @@ export function useArticles() {
       !uniqueNewSources.every((source) => activeSources.value.includes(source))
     ) {
       activeSources.value = uniqueNewSources;
-      fetchArticles(); // Trigger refetch - uses queryTerm now
+      // fetchArticles(); // Trigger refetch - uses queryTerm now - Handled by watcher
+      // Reset pagination state when filters change
+      offset.value = 0;
+      allLoaded.value = false;
     }
   }
 
@@ -161,7 +273,10 @@ export function useArticles() {
       !uniq.every((t) => activeTags.value.includes(t))
     ) {
       activeTags.value = uniq;
-      fetchArticles(); // Trigger refetch - uses queryTerm now
+      // fetchArticles(); // Trigger refetch - uses queryTerm now - Handled by watcher
+      // Reset pagination state when filters change
+      offset.value = 0;
+      allLoaded.value = false;
     }
   }
 
@@ -184,19 +299,27 @@ export function useArticles() {
     [queryTerm, activeSources, activeTags],
     (newValue, oldValue) => {
       // Destructure for clarity, comparing old and new query terms
-      const [newQuery /*, newSources, newTags */] = newValue;
-      const [oldQuery /*, oldSources, oldTags */] = oldValue || []; // Handle initial call
+      const [newQuery, newSources, newTags] = newValue;
+      const [oldQuery, oldSources, oldTags] = oldValue || [[], [], []];
 
       // Always update source stats when any filter changes.
-      // The stats endpoint now depends on queryTerm and activeTags.
-      // It also needs to run if activeSources changes so the UI driving this watch gets updated counts.
       fetchSourceStats();
 
-      // Refetch articles *only* if the query term itself changed.
-      // Changes initiated by updateActiveSources or updateActiveTags already trigger fetchArticles internally.
-      // This check prevents double-fetching when sources/tags are changed via their respective update functions.
-      if (newQuery !== oldQuery) {
-        fetchArticles();
+      // Refetch articles *only* if the query term itself changed,
+      // OR if sources/tags changed (indicating a direct filter change, not just stats update).
+      // The watcher triggers *after* updateActiveSources/Tags has reset offset/allLoaded.
+      // The initial fetchArticles call inside those functions was removed.
+      if (
+        newQuery !== oldQuery ||
+        newSources !== oldSources ||
+        newTags !== oldTags
+      ) {
+        // Reset pagination and fetch first page when filters change
+        offset.value = 0;
+        allLoaded.value = false;
+        // The observer in ArticleList should be disconnected/reconnected by the component
+        // when the articles list identity changes (which it will on filter change).
+        fetchArticles({ append: false }); // Fetch the first page for the new filters
       }
     },
     { deep: true } // Use deep watch for arrays (activeSources, activeTags)
@@ -218,5 +341,9 @@ export function useArticles() {
     activeTags,
     updateActiveTags,
     queryTerm, // Export queryTerm
+    // --- New Exports ---
+    allLoaded,
+    fetchArticlesUntilAllLoadedInBackground, // For drawer
+    ensureArticleLoaded, // For scrolling to a specific article
   };
 }
