@@ -19,7 +19,7 @@ defineProps({
 });
 
 // --- Emits ---
-const emit = defineEmits(["clear-filters"]);
+const emit = defineEmits(["clear-filters", "show-similar"]);
 </script>
 
 <template>
@@ -66,7 +66,10 @@ const emit = defineEmits(["clear-filters"]);
         class="pt-14 pb-6 first:pt-0 last:pb-0"
       >
         <!-- Removed conditional border class -->
-        <ArticleCard :article="article" />
+        <ArticleCard
+          :article="article"
+          @show-similar="emit('show-similar', $event)"
+        />
       </li>
     </template>
   </ul>

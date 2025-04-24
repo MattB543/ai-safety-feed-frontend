@@ -23,6 +23,7 @@ const props = defineProps({
     required: true,
   },
 });
+const emit = defineEmits(["show-similar", "view-article"]);
 
 // --- State ---
 const isParagraphSummaryExpanded = ref(false);
@@ -68,6 +69,9 @@ const filteredTopics = computed(() => {
   if (props.article.cluster_tag === "Forecasting & World Modeling") {
     return props.article.topics.filter((topic) => topic !== "Forecasting");
   }
+  if (props.article.cluster_tag === "Biorisk & Other GCRs") {
+    return props.article.topics.filter((topic) => topic !== "Biorisk");
+  }
   return props.article.topics;
 });
 
@@ -82,7 +86,7 @@ function toggleKeyImplication() {
 </script>
 
 <template>
-  <article class="bg-white px-6">
+  <article class="bg-white px-6" :id="`article-${article.id}`">
     <!-- Top Section: Image on Left, Info on Right -->
     <div class="flex flex-col md:flex-row gap-4 mb-4">
       <div v-if="article.image_url" class="md:w-1/4 flex-shrink-0 max-w-sm">
@@ -104,7 +108,14 @@ function toggleKeyImplication() {
       <div class="flex-grow text-left">
         <div class="flex justify-between items-start mb-2">
           <h2 class="text-2xl font-bold text-gray-900 mr-4">
-            {{ article.title }}
+            <span
+              class="cursor-pointer hover:underline"
+              @click="$emit('view-article', article.id)"
+              role="button"
+              :aria-label="`View details for ${article.title}`"
+            >
+              {{ article.title }}
+            </span>
           </h2>
         </div>
 
@@ -193,39 +204,37 @@ function toggleKeyImplication() {
             @click="toggleKeyImplication"
             size="small"
             :title="
-              isKeyImplicationExpanded
-                ? 'Hide Key Implication'
-                : 'Show Key Implication'
+              isKeyImplicationExpanded ? 'Hide Implication' : 'Show Implication'
             "
           >
             <template #icon>
               <IconKey stroke-width="2" />
             </template>
-            {{
-              isKeyImplicationExpanded
-                ? "Hide Key Implication"
-                : "Key Implication"
-            }}
+            {{ isKeyImplicationExpanded ? "Hide Implication" : "Implication" }}
           </n-button>
           <n-button
-            tag="a"
-            :href="article.source_url"
             size="small"
+            v-if="article.embedding_short || article.embedding_full"
+            @click="
+              emit('show-similar', { id: article.id, title: article.title })
+            "
+          >
+            Similar Posts
+          </n-button>
+          <a
+            :href="article.source_url"
             target="_blank"
             rel="noopener noreferrer"
-            :title="`Open ${article.source_type || 'link'} in new tab`"
+            :title="'Open ' + (article.source_type || 'link') + ' in new tab'"
+            class="inline-flex items-center text-xs text-blue-600 hover:text-blue-800"
           >
-            <template #icon>
-              <IconExternalLink stroke-width="2" />
-            </template>
-            <span v-if="article.source_type">
-              {{
-                article.source_type.charAt(0).toUpperCase() +
-                article.source_type.slice(1)
-              }}</span
-            >
-            <span v-else>Open Link</span>
-          </n-button>
+            <n-button size="small">
+              <template #icon>
+                <IconExternalLink stroke-width="2" />
+              </template>
+              Source
+            </n-button>
+          </a>
         </div>
 
         <!-- Author & Date (Right Side) - MOVED HERE -->
@@ -303,13 +312,13 @@ function toggleKeyImplication() {
         </ul>
       </div>
 
-      <!-- Key Implication (Conditional) -->
+      <!-- Implication (Conditional) -->
       <div
         v-if="isKeyImplicationExpanded && article.key_implication"
         class="text-gray-700 mt-4 bg-gray-100 px-3 py-2 rounded-md mb-4"
       >
         <span class="block text-sm text-gray-500 font-medium mb-1"
-          >Key Implication</span
+          >Implication</span
         >
         <div class="text-gray-700">
           {{ article.key_implication }}

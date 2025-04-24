@@ -1,5 +1,5 @@
 <script setup>
-import { watch, computed } from "vue";
+import { watch, computed, ref } from "vue";
 import { useArticles } from "./composables/useArticles";
 import AppHeader from "./components/AppHeader.vue";
 import AppFooter from "./components/AppFooter.vue";
@@ -8,6 +8,7 @@ import SearchBar from "./components/SearchBar.vue";
 import SourceFilters from "./components/SourceFilters.vue";
 import TagFilters from "./components/TagFilters.vue";
 import IntroCard from "./components/IntroCard.vue";
+import SimilarDrawer from "./components/SimilarDrawer.vue";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -58,6 +59,37 @@ watch([activeSources, activeTags], () => {
   // TODO: Consider adding debouncing for searchTerm
   fetchArticles();
 });
+
+const drawerOpen = ref(false);
+const drawerTarget = ref(null); // id of the reference post
+const drawerTargetTitle = ref(""); // title of the reference post
+
+// Watch for drawer state changes to adjust body padding
+watch(drawerOpen, (isOpen) => {
+  if (isOpen) {
+    // Check if scrollbar exists before adding padding
+    const scrollbarWidth =
+      window.innerWidth - document.documentElement.clientWidth;
+    document.body.style.paddingRight = `${420 + scrollbarWidth}px`; // Adjust for drawer width + potential scrollbar
+    document.body.style.overflow = "hidden"; // Prevent body scrolling when drawer is open
+  } else {
+    document.body.style.paddingRight = "";
+    document.body.style.overflow = ""; // Restore body scrolling
+  }
+});
+
+function openSimilar(payload) {
+  drawerTarget.value = payload.id;
+  drawerTargetTitle.value = payload.title;
+  drawerOpen.value = true;
+}
+
+function scrollToArticle(id) {
+  const element = document.getElementById(`article-${id}`);
+  if (element) {
+    element.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+}
 </script>
 
 <template>
@@ -115,10 +147,19 @@ watch([activeSources, activeTags], () => {
         :isLoading="isLoading"
         :error="error"
         @clear-filters="clearFilters"
+        @show-similar="openSimilar"
       />
     </main>
 
     <!-- Use AppFooter component -->
     <AppFooter />
+
+    <SimilarDrawer
+      v-model:show="drawerOpen"
+      :articleId="drawerTarget"
+      :reference-article-title="drawerTargetTitle"
+      @scroll-to-article="scrollToArticle"
+      :style="{ '--n-mask-color': 'rgba(0, 0, 0, 0.2)' }"
+    />
   </div>
 </template>
