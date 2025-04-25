@@ -271,6 +271,7 @@ function toggleNovelty() {
           </n-button>
           <n-button
             size="small"
+            type="tertiary"
             @click="
               emit('show-similar', { id: article.id, title: article.title })
             "
