@@ -15,6 +15,7 @@ import {
 import { NTooltip, NButton } from "naive-ui";
 import { formatDate, formatTagForDisplay } from "../utils/formatters";
 import MarkdownIt from "markdown-it";
+import IconSparklesCustom from "./icons/IconSparklesCustom.vue";
 
 // --- Props ---
 const props = defineProps({
@@ -28,6 +29,7 @@ const emit = defineEmits(["show-similar", "view-article"]);
 // --- State ---
 const isParagraphSummaryExpanded = ref(false);
 const isKeyImplicationExpanded = ref(false);
+const isNoveltyExpanded = ref(false);
 const md = new MarkdownIt(); // Initialize markdown-it
 
 // --- Mappings ---
@@ -49,9 +51,32 @@ const formattedParagraphSummary = computed(() => {
   return md.render(props.article.paragraph_summary);
 });
 
+const formattedNoveltyNote = computed(() => {
+  if (!props.article.novelty_note) {
+    return "";
+  }
+  // Replace "ID <number>" with a link to the article
+  return props.article.novelty_note.replace(
+    /ID (\d+)/g,
+    (match, id) =>
+      `<a href="#article-${id}" class="text-blue-600 hover:underline">here</a>` // Keep ID for clarity
+  );
+});
+
 const ClusterIcon = computed(
   () => clusterIconMap[props.article.cluster_tag] || IconTag // fallback
 );
+
+// Computed property for the 1-5 novelty rating
+const noveltyRating = computed(() => {
+  const score = props.article.novelty_score;
+  if (score == null || score < 0) return 0; // Handle null/negative scores
+  if (score >= 81) return 5; // Bucket 5: 81-100
+  if (score >= 71) return 4; // Bucket 4: 71-80
+  if (score >= 41) return 3; // Bucket 3: 41-70
+  if (score >= 21) return 2; // Bucket 2: 21-40
+  return 1; // Bucket 1: 0-20
+});
 
 // Computed property for the full author list tooltip content
 const fullAuthorList = computed(() => {
@@ -96,6 +121,10 @@ function toggleParagraphSummary() {
 
 function toggleKeyImplication() {
   isKeyImplicationExpanded.value = !isKeyImplicationExpanded.value;
+}
+
+function toggleNovelty() {
+  isNoveltyExpanded.value = !isNoveltyExpanded.value;
 }
 </script>
 
@@ -206,26 +235,39 @@ function toggleKeyImplication() {
             v-if="article.paragraph_summary"
             @click="toggleParagraphSummary"
             size="small"
+            :type="isParagraphSummaryExpanded ? 'info' : 'tertiary'"
           >
             <template #icon>
               <IconListDetails stroke-width="2" class="w-4 h-4" />
             </template>
-            {{
-              isParagraphSummaryExpanded ? "Hide Main Points" : "Main Points"
-            }}
+            {{ isParagraphSummaryExpanded ? "Main Points" : "Main Points" }}
           </n-button>
           <n-button
             v-if="article.key_implication"
             @click="toggleKeyImplication"
             size="small"
             :title="
-              isKeyImplicationExpanded ? 'Hide Implication' : 'Show Implication'
+              isKeyImplicationExpanded ? 'Implication' : 'Show Implication'
             "
+            :type="isKeyImplicationExpanded ? 'info' : 'tertiary'"
           >
             <template #icon>
               <IconKey stroke-width="2" class="w-4 h-4" />
             </template>
-            {{ isKeyImplicationExpanded ? "Hide Implication" : "Implication" }}
+            {{ isKeyImplicationExpanded ? "Implication" : "Implication" }}
+          </n-button>
+          <!-- New Novelty Display -->
+          <n-button
+            v-if="article.novelty_note && noveltyRating > 0"
+            @click="toggleNovelty"
+            size="small"
+            title="Click to toggle novelty details"
+            :type="isNoveltyExpanded ? 'info' : 'tertiary'"
+          >
+            <template #icon>
+              <IconSparklesCustom class="w-4 h-4" />
+            </template>
+            Novelty: {{ noveltyRating }}/5
           </n-button>
           <n-button
             size="small"
@@ -326,6 +368,17 @@ function toggleKeyImplication() {
         <div class="text-gray-700">
           {{ article.key_implication }}
         </div>
+      </div>
+
+      <!-- Novelty note (Conditional) -->
+      <div
+        v-if="isNoveltyExpanded && article.novelty_note"
+        class="text-gray-700 mt-4 bg-gray-100 px-3 py-2 rounded-md mb-4"
+      >
+        <span class="block text-sm text-gray-500 font-medium mb-1">
+          What's New ({{ noveltyRating }}/5 Score)
+        </span>
+        <div class="text-gray-700" v-html="formattedNoveltyNote"></div>
       </div>
 
       <!-- Paragraph Summary (Conditional) -->

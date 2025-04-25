@@ -7,6 +7,7 @@ import ArticleList from "./components/ArticleList.vue";
 import SearchBar from "./components/SearchBar.vue";
 import SourceFilters from "./components/SourceFilters.vue";
 import TagFilters from "./components/TagFilters.vue";
+import NoveltyFilter from "./components/NoveltyFilter.vue";
 import IntroCard from "./components/IntroCard.vue";
 import SimilarDrawer from "./components/SimilarDrawer.vue";
 import { ListSearch as IconListSearch } from "@vicons/tabler";
@@ -31,6 +32,7 @@ const {
   allLoaded,
   fetchArticlesUntilAllLoadedInBackground,
   ensureArticleLoaded,
+  minNovelty,
 } = useArticles();
 
 // Computed property to check if any filter is active
@@ -38,7 +40,8 @@ const isFilterActive = computed(() => {
   return (
     searchTerm.value.trim() !== "" ||
     activeSources.value.length !== availableSources.value.length ||
-    activeTags.value.length !== availableTags.value.map((t) => t.tag).length
+    activeTags.value.length !== availableTags.value.map((t) => t.tag).length ||
+    minNovelty.value !== null
   );
 });
 
@@ -55,6 +58,7 @@ function clearFilters() {
   updateActiveSources(availableSources.value);
   // Reset tags to all available
   updateActiveTags(availableTags.value.map((t) => t.tag));
+  minNovelty.value = null;
 }
 
 const drawerOpen = ref(false);
@@ -142,14 +146,16 @@ function handleLoadMore() {
       <div
         class="max-w-[980px] mx-auto mb-6 flex flex-col md:flex-row md:items-start gap-4 md:gap-6"
       >
-        <!-- Search Input - listen for the 'search' event -->
+        <!-- Search Input -->
         <SearchBar
           v-model="searchTerm"
           @search="handleSearch"
           class="flex-grow max-w-[400px]"
         />
 
-        <div class="flex items-center gap-2 md:flex-shrink-0 md:ml-auto">
+        <div
+          class="flex items-center gap-2 md:flex-shrink-0 md:ml-auto flex-wrap justify-start md:justify-end"
+        >
           <!-- Clear Filter Button -->
           <button
             v-if="isFilterActive"
@@ -157,10 +163,13 @@ function handleLoadMore() {
             class="text-sm text-blue-600 rounded px-2 py-1 transition-colors duration-150 ease-in-out focus:outline-none hover:bg-blue-100 hover:text-blue-700 focus:bg-blue-100 focus:text-blue-700"
             aria-label="Clear all filters"
           >
-            Clear filter
+            Clear filters
           </button>
 
-          <!-- Source Filters - updated props and event -->
+          <!-- Novelty Filter Component -->
+          <NoveltyFilter v-model="minNovelty" />
+
+          <!-- Source Filters -->
           <SourceFilters
             :availableSources="availableSources"
             :activeSources="activeSources"
@@ -168,7 +177,7 @@ function handleLoadMore() {
             @update-sources="updateActiveSources"
           />
 
-          <!-- Tag Filters - Added -->
+          <!-- Tag Filters -->
           <TagFilters
             :availableTags="availableTags"
             :activeTags="activeTags"

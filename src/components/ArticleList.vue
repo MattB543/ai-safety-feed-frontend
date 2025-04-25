@@ -141,7 +141,7 @@ watch(
       v-else-if="articles.length === 0 && !isLoading"
       class="text-center text-gray-600 py-10 space-y-4"
     >
-      <p>No articles found. Try adjusting your search or check back later.</p>
+      <p>No articles found. Try adjusting your search or filters.</p>
       <button
         @click="emit('clear-filters')"
         class="text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-100 py-1 px-3 rounded cursor-pointer"

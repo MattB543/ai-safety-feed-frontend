@@ -13,6 +13,8 @@ export function useArticles() {
   // ---- TAG FILTER STATE ----
   const availableTags = ref([]); // [{ tag, post_count }]
   const activeTags = ref([]); // ["Interpretability", …]
+  // ---- NOVELTY FILTER STATE ----
+  const minNovelty = ref(null); // Minimum novelty score (0-100 scale bucket start: 0, 21, 41, 71, 91), null means no filter
   // ---- PAGINATION STATE ----
   const pageSize = 50;
   const offset = ref(0);
@@ -126,6 +128,13 @@ export function useArticles() {
 
       if (activeTags.value.length) {
         params.append("tags", activeTags.value.join(","));
+      }
+
+      // Add novelty filter if set (minimum score of the bucket: 0, 21, 41, 71, 91)
+      if (minNovelty.value !== null && typeof minNovelty.value === "number") {
+        // Backend expects the minimum score for the selected bucket range
+        // Valid scores: 0, 21, 41, 71, 91
+        params.append("novelty_bucket", minNovelty.value.toString());
       }
 
       // Add pagination parameters
@@ -280,50 +289,70 @@ export function useArticles() {
     }
   }
 
-  // --- Lifecycle Hooks ---
+  // --- Watchers ---
 
-  // Fetch initial data when the composable is used
-  onMounted(() => {
-    // Fetch sources and tags in parallel. fetchSourceStats will set the default
-    // activeSources if it's the first load. fetchAvailableTags will set default
-    // activeTags if needed. Then fetch articles using these defaults.
-    Promise.all([fetchSourceStats(), fetchAvailableTags()]).then(() => {
-      if (!error.value) {
-        fetchArticles();
-      }
-    });
-  });
-
-  // Watch for changes in filters to update source stats and potentially refetch articles.
+  // Combined watcher for all filters that require refetching articles
   watch(
-    [queryTerm, activeSources, activeTags],
-    (newValue, oldValue) => {
-      // Destructure for clarity, comparing old and new query terms
-      const [newQuery, newSources, newTags] = newValue;
-      const [oldQuery, oldSources, oldTags] = oldValue || [[], [], []];
+    [queryTerm, activeSources, activeTags, minNovelty],
+    (
+      [newQueryTerm, newActiveSources, newActiveTags, newMinNovelty],
+      [oldQueryTerm, oldActiveSources, oldActiveTags, oldMinNovelty]
+    ) => {
+      console.log("Filters changed:", {
+        newQueryTerm,
+        newActiveSources,
+        newActiveTags,
+        newMinNovelty,
+      });
 
-      // Always update source stats when any filter changes.
-      fetchSourceStats();
+      // Check if it's a filter reset scenario
+      const isResetting =
+        newQueryTerm === "" &&
+        newActiveSources.length === availableSources.value.length && // Check against ALL available
+        newActiveTags.length === availableTags.value.map((t) => t.tag).length && // Check against ALL available
+        newMinNovelty === null; // Check if novelty is reset
 
-      // Refetch articles *only* if the query term itself changed,
-      // OR if sources/tags changed (indicating a direct filter change, not just stats update).
-      // The watcher triggers *after* updateActiveSources/Tags has reset offset/allLoaded.
-      // The initial fetchArticles call inside those functions was removed.
-      if (
-        newQuery !== oldQuery ||
-        newSources !== oldSources ||
-        newTags !== oldTags
-      ) {
-        // Reset pagination and fetch first page when filters change
-        offset.value = 0;
-        allLoaded.value = false;
-        // The observer in ArticleList should be disconnected/reconnected by the component
-        // when the articles list identity changes (which it will on filter change).
-        fetchArticles({ append: false }); // Fetch the first page for the new filters
+      const wasResetBefore =
+        oldQueryTerm === "" &&
+        Array.isArray(oldActiveSources) &&
+        oldActiveSources.length === availableSources.value.length && // Check against ALL available
+        Array.isArray(oldActiveTags) &&
+        oldActiveTags.length === availableTags.value.map((t) => t.tag).length && // Check against ALL available
+        oldMinNovelty === null; // Check if novelty was reset
+
+      // Avoid fetching if the filters were already in the "reset" state and haven't changed *from* reset
+      // Or if the component is initializing (old values might be undefined)
+      if (isResetting && wasResetBefore && oldQueryTerm !== undefined) {
+        console.log(
+          "Filters are in reset state and haven't changed from reset, skipping fetch."
+        );
+        return;
       }
+
+      // Reset pagination and fetch new articles whenever any filter changes
+      offset.value = 0;
+      allLoaded.value = false;
+      fetchArticles({ append: false }); // Fetch new set, not append
+
+      // Also refetch source stats and tags as counts might change
+      fetchSourceStats();
+      // Tags don't depend on other filters for *availability*, only counts,
+      // so no need to fetchAvailableTags() here unless backend changes.
     },
-    { deep: true } // Use deep watch for arrays (activeSources, activeTags)
+    { deep: true } // Use deep watch for arrays like activeSources/activeTags
   );
+
+  // Initial data loading on mount
+  onMounted(async () => {
+    isLoading.value = true;
+    // Fetch available tags first
+    await fetchAvailableTags();
+    // Fetch initial source stats (this might set initial activeSources)
+    await fetchSourceStats();
+    // Then fetch initial articles (will use default activeSources/Tags if set)
+    await fetchArticles();
+    isLoading.value = false; // Ensure loading is false after all initial fetches
+  });
 
   // Return the reactive state and any methods needed by the component
   return {
@@ -345,5 +374,6 @@ export function useArticles() {
     allLoaded,
     fetchArticlesUntilAllLoadedInBackground, // For drawer
     ensureArticleLoaded, // For scrolling to a specific article
+    minNovelty, // Expose novelty state
   };
 }

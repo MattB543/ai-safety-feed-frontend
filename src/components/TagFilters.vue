@@ -187,15 +187,14 @@ watch(localSelection, (newSelection, oldSelection) => {
 
       <!-- actions -->
       <div class="flex gap-2 mt-4">
-        <NButton size="tiny" tertiary @click="showPopover = false"
+        <NButton
+          size="small"
+          tertiary
+          @click="showPopover = false"
+          style="flex: 1"
           >Cancel</NButton
         >
-        <NButton
-          size="tiny"
-          type="primary"
-          @click="commit"
-          style="flex-grow: 1"
-        >
+        <NButton size="small" type="primary" @click="commit" style="flex: 1">
           Apply
         </NButton>
       </div>

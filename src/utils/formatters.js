@@ -33,3 +33,10 @@ export function formatTagForDisplay(tag) {
 
   return formattedTag;
 }
+
+export function noveltyClass(p) {
+  if (p === null || p === undefined) return "";
+  if (p >= 80) return "bg-green-100 text-green-800 ring-green-200";
+  if (p >= 50) return "bg-yellow-100 text-yellow-800 ring-yellow-200";
+  return "bg-gray-100 text-gray-600 ring-gray-200";
+}
