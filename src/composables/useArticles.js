@@ -168,11 +168,15 @@ export function useArticles() {
       // articles.value = []; // Let the new results replace them
     }
 
+    // Add a log to see the options received by fetchArticles
+    console.log("fetchArticles called with options:", options);
+
     try {
       let url = `${API_BASE_URL}/api/content`;
       const params = new URLSearchParams();
 
       if (options.query) {
+        console.log(`Appending search param with query: '${options.query}'`);
         params.append("search", options.query);
       }
 
@@ -391,7 +395,8 @@ export function useArticles() {
       // Reset pagination and fetch new articles whenever any filter changes
       offset.value = 0;
       allLoaded.value = false;
-      fetchArticles({ append: false }); // Fetch new set, not append
+      // Pass the new query term explicitly
+      fetchArticles({ append: false, query: newQueryTerm }); // Fetch new set, not append
 
       // Also refetch source stats and tags as counts might change
       fetchSourceStats();
