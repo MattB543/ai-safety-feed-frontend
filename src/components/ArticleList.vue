@@ -113,14 +113,16 @@ watch(
 
 <template>
   <ul
-    class="bg-white max-w-[980px] mx-auto rounded-lg shadow-md pt-6 sm:p-6 divide-y divide-gray-200"
+    class="bg-white max-w-[980px] mx-auto rounded-lg shadow-md pt-6 sm:p-6 divide-y divide-gray-200 min-h-[400px] flex flex-col"
   >
     <!-- Loading State -->
     <div
       v-if="isLoading && articles.length === 0"
-      class="text-center text-gray-600 py-10"
+      class="text-center text-gray-600 py-10 flex-grow flex flex-col items-center justify-center"
     >
-      <p>Loading articles...</p>
+      <!-- Simple CSS Spinner -->
+      <div class="spinner mb-4"></div>
+      <p class="text-base">Loading articles...</p>
       <p class="text-xs text-gray-500">
         (refresh after 1 minute, the free tier server is starting up)
       </p>
@@ -129,7 +131,7 @@ watch(
     <!-- Error State -->
     <div
       v-else-if="error"
-      class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative"
+      class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative m-4 flex-grow flex flex-col items-center justify-center"
       role="alert"
     >
       <strong class="font-bold">Error!</strong>
@@ -139,7 +141,7 @@ watch(
     <!-- No Articles/Results State -->
     <div
       v-else-if="articles.length === 0 && !isLoading"
-      class="text-center text-gray-600 py-10 space-y-4"
+      class="text-center text-gray-600 py-10 space-y-4 flex-grow flex flex-col items-center justify-center"
     >
       <p>No articles found. Try adjusting your search or filters.</p>
       <button
@@ -155,7 +157,7 @@ watch(
       <li
         v-for="article in articles"
         :key="article.id || article.source_url"
-        class="pt-14 pb-6 first:pt-0"
+        class="pt-14 pb-6 first:pt-6"
       >
         <ArticleCard
           :article="article"
@@ -166,7 +168,9 @@ watch(
 
     <!-- Loading indicator for infinite scroll -->
     <div v-if="isLoading && articles.length > 0" class="text-center py-4">
-      <p class="text-gray-600">Loading more articles...</p>
+      <!-- Simple CSS Spinner for load more -->
+      <div class="spinner mx-auto"></div>
+      <!-- <p class="text-gray-600">Loading more articles...</p> -->
     </div>
 
     <!-- Sentinel Element for Intersection Observer -->
@@ -178,3 +182,30 @@ watch(
     ></div>
   </ul>
 </template>
+
+<style scoped>
+.spinner {
+  border: 4px solid rgba(0, 0, 0, 0.1);
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border-left-color: #09f; /* Customize color if needed */
+  animation: spin 1s ease infinite;
+}
+
+@keyframes spin {
+  0% {
+    transform: rotate(0deg);
+  }
+  100% {
+    transform: rotate(360deg);
+  }
+}
+
+/* Ensure the list itself grows if content overflows the min-height */
+ul {
+  /* min-height is already applied via tailwind */
+  /* display: flex; */ /* Already applied via tailwind */
+  /* flex-direction: column; */ /* Already applied via tailwind */
+}
+</style>

@@ -44,10 +44,26 @@ fetchArticles();
 
 // Computed property to check if any filter is active
 const isFilterActive = computed(() => {
+  // Get the full list of all possible source names
+  const allSourceNames = allAvailableSources.value; // This is already just the names array ['LW', 'AF', ...]
+
+  // Get the full list of all possible tag names
+  const allTagNames = availableTags.value.map((t) => t.tag);
+
+  // A filter is active if sources are different from the default (all selected)
+  // Check lengths *only if* the full list has loaded (length > 0) to avoid false positives during init
+  const sourcesAreFiltered =
+    allSourceNames.length > 0 &&
+    activeSources.value.length !== allSourceNames.length;
+
+  // A filter is active if tags are different from the default (all selected)
+  const tagsAreFiltered =
+    allTagNames.length > 0 && activeTags.value.length !== allTagNames.length;
+
   return (
-    searchTerm.value.trim() !== "" ||
-    activeSources.value.length !== availableSources.value.length ||
-    activeTags.value.length !== availableTags.value.map((t) => t.tag).length ||
+    queryTerm.value.trim() !== "" || // Use queryTerm here as it reflects the submitted search
+    sourcesAreFiltered ||
+    tagsAreFiltered ||
     minNovelty.value !== null
   );
 });
@@ -61,9 +77,9 @@ function handleSearch() {
 function clearFilters() {
   searchTerm.value = "";
   queryTerm.value = "";
-  // Reset sources to all available
-  updateActiveSources(availableSources.value);
-  // Reset tags to all available
+  // Reset sources to ALL available sources
+  updateActiveSources(allAvailableSources.value); // Use allAvailableSources here
+  // Reset tags to ALL available tags
   updateActiveTags(availableTags.value.map((t) => t.tag));
   minNovelty.value = null;
 }
