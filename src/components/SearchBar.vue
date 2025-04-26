@@ -1,5 +1,5 @@
 <script setup>
-import { computed } from "vue";
+import { computed, watch } from "vue";
 import { NInput, NButton, NIcon } from "naive-ui";
 import { Search as SearchIcon } from "@vicons/tabler";
 
@@ -15,6 +15,13 @@ const emit = defineEmits(["update:modelValue", "search"]);
 const value = computed({
   get: () => props.modelValue,
   set: (v) => emit("update:modelValue", v),
+});
+
+watch(value, (newValue, oldValue) => {
+  // Trigger search when the input is cleared
+  if (oldValue && !newValue) {
+    handleSearch();
+  }
 });
 
 // Theme overrides for the input component

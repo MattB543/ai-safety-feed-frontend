@@ -10,7 +10,8 @@ import TagFilters from "./components/TagFilters.vue";
 import NoveltyFilter from "./components/NoveltyFilter.vue";
 import IntroCard from "./components/IntroCard.vue";
 import SimilarDrawer from "./components/SimilarDrawer.vue";
-import { ListSearch as IconListSearch } from "@vicons/tabler";
+import { ListSearch as IconListSearch, Dice as IconDice } from "@vicons/tabler";
+import { NTooltip } from "naive-ui";
 
 const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
@@ -33,7 +34,13 @@ const {
   fetchArticlesUntilAllLoadedInBackground,
   ensureArticleLoaded,
   minNovelty,
+  allAvailableSources,
+  allSourceCounts,
+  fetchRandomOrder,
 } = useArticles();
+
+// Fetch initial articles on component mount
+fetchArticles();
 
 // Computed property to check if any filter is active
 const isFilterActive = computed(() => {
@@ -59,6 +66,11 @@ function clearFilters() {
   // Reset tags to all available
   updateActiveTags(availableTags.value.map((t) => t.tag));
   minNovelty.value = null;
+}
+
+// --- New function to handle random order ---
+function requestRandomOrder() {
+  fetchRandomOrder();
 }
 
 const drawerOpen = ref(false);
@@ -166,14 +178,28 @@ function handleLoadMore() {
             Clear filters
           </button>
 
+          <!-- Random Order Button -->
+          <NTooltip :delay="0" :duration="0">
+            <template #trigger>
+              <button
+                @click="requestRandomOrder"
+                class="inline-flex items-center gap-1 px-3 py-2 border border-gray-300 shadow-xs text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400"
+                aria-label="Randomize article order"
+              >
+                <IconDice stroke-width="3" class="h-4 w-4" />
+              </button>
+            </template>
+            Randomize article order
+          </NTooltip>
+
           <!-- Novelty Filter Component -->
           <NoveltyFilter v-model="minNovelty" />
 
           <!-- Source Filters -->
           <SourceFilters
-            :availableSources="availableSources"
+            :availableSources="allAvailableSources"
             :activeSources="activeSources"
-            :counts="sourceCounts"
+            :counts="allSourceCounts"
             @update-sources="updateActiveSources"
           />
 
