@@ -11,3 +11,9 @@
   host = "us.i.posthog.com"
   status = 200
   force = true
+
+# SPA redirect rule
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200
