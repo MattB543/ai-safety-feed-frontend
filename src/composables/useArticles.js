@@ -2,8 +2,8 @@ import { ref, onMounted, computed, watch } from "vue";
 
 export function useArticles() {
   // --- State ---
-  const articles = ref([]);
-  const isLoading = ref(false); // Start as false, let fetchArticles manage it
+  const articles = ref([]); // Holds the *currently displayed* articles (either normal feed or bookmarks)
+  const isLoading = ref(false);
   const error = ref(null);
   const activeSources = ref([]);
   const availableSources = ref([]);
@@ -17,23 +17,78 @@ export function useArticles() {
   const minNovelty = ref(null);
   const pageSize = 50;
   const offset = ref(0);
-  const allLoaded = ref(false);
-  const abortController = ref(null); // To abort ongoing fetch requests
-  const isInitializing = ref(true); // Keep the initialization flag
+  const allLoaded = ref(false); // Tracks pagination for the *normal* feed
+  const abortController = ref(null);
+  const isInitializing = ref(true);
+
+  // --- Bookmark State ---
+  const bookmarkedIds = ref(new Set());
+  const showOnlyBookmarks = ref(false); // The toggle state
+  const BOOKMARK_STORAGE_KEY = "bookmarkedArticleIds";
 
   const API_BASE_URL =
     import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
-  // --- Methods ---
+  // --- Bookmark Persistence ---
+  function loadBookmarksFromLocalStorage() {
+    try {
+      const storedBookmarks = localStorage.getItem(BOOKMARK_STORAGE_KEY);
+      if (storedBookmarks) {
+        const parsedIds = JSON.parse(storedBookmarks);
+        if (Array.isArray(parsedIds)) {
+          bookmarkedIds.value = new Set(parsedIds);
+          console.log("Loaded bookmarks:", bookmarkedIds.value); // Debug log
+        } else {
+          console.warn("Invalid bookmark data found in localStorage.");
+          localStorage.removeItem(BOOKMARK_STORAGE_KEY);
+        }
+      } else {
+        console.log("No bookmarks found in localStorage."); // Debug log
+      }
+    } catch (e) {
+      console.error("Failed to load bookmarks from localStorage:", e);
+    }
+  }
 
+  function saveBookmarksToLocalStorage() {
+    try {
+      const idsToSave = Array.from(bookmarkedIds.value);
+      localStorage.setItem(BOOKMARK_STORAGE_KEY, JSON.stringify(idsToSave));
+      console.log("Saved bookmarks:", idsToSave); // Debug log
+    } catch (e) {
+      console.error("Failed to save bookmarks to localStorage:", e);
+    }
+  }
+
+  // --- Toggle Bookmark ---
+  function toggleBookmark(articleId) {
+    const currentBookmarks = bookmarkedIds.value;
+    if (currentBookmarks.has(articleId)) {
+      currentBookmarks.delete(articleId);
+    } else {
+      currentBookmarks.add(articleId);
+    }
+    bookmarkedIds.value = new Set(currentBookmarks); // Trigger reactivity
+    saveBookmarksToLocalStorage(); // Save immediately
+
+    // *** If currently showing bookmarks, refetch the list to reflect the change ***
+    if (showOnlyBookmarks.value) {
+      fetchBookmarkedArticles(); // Call the dedicated fetch function
+    }
+  }
+
+  // --- Metadata Fetching (Unchanged) ---
   async function fetchSourceStats() {
-    // No changes needed here unless you want separate loading/error states
+    // ... (keep existing implementation)
     try {
       let url = `${API_BASE_URL}/api/source-stats`;
       const params = new URLSearchParams();
-      if (queryTerm.value) params.append("search", queryTerm.value);
-      if (activeTags.value.length)
-        params.append("tags", activeTags.value.join(","));
+      // Only apply filters if *not* showing bookmarks
+      if (!showOnlyBookmarks.value) {
+        if (queryTerm.value) params.append("search", queryTerm.value);
+        if (activeTags.value.length)
+          params.append("tags", activeTags.value.join(","));
+      }
       const queryString = params.toString();
       if (queryString) url += `?${queryString}`;
 
@@ -47,17 +102,18 @@ export function useArticles() {
       );
     } catch (e) {
       console.error("Failed to load source stats", e);
-      error.value = "Failed to load source statistics."; // Consider if this should overwrite article errors
+      // Avoid overwriting main error if possible, or use a separate error state
+      // error.value = "Failed to load source statistics.";
       availableSources.value = [];
       sourceCounts.value = {};
     }
   }
 
   async function fetchAllSourceStats() {
-    // No changes needed here unless you want separate loading/error states
+    // ... (keep existing implementation)
     const isInitialSourceLoad = allAvailableSources.value.length === 0;
     try {
-      let url = `${API_BASE_URL}/api/source-stats`;
+      let url = `${API_BASE_URL}/api/source-stats`; // Fetch unfiltered stats always
       const response = await fetch(url);
       if (!response.ok)
         throw new Error(`HTTP error! status: ${response.status}`);
@@ -79,66 +135,66 @@ export function useArticles() {
   }
 
   async function fetchAvailableTags() {
-    // No changes needed here unless you want separate loading/error states
+    // ... (keep existing implementation)
     try {
       const rows = await fetch(`${API_BASE_URL}/api/tags`).then((r) =>
         r.json()
       );
       availableTags.value = rows;
-      // Initialize activeTags only if currently empty
-      if (activeTags.value.length === 0) {
+      // Initialize activeTags only if currently empty and not showing bookmarks
+      if (activeTags.value.length === 0 && !showOnlyBookmarks.value) {
         activeTags.value = rows.map((r) => r.tag);
       }
     } catch (e) {
       console.error("Failed to load tags", e);
-      error.value = "Failed to load tags list."; // Consider if this should overwrite article errors
+      // error.value = "Failed to load tags list.";
     }
   }
 
-  // Function to fetch articles from the server
+  // --- Fetch Normal Articles (Paginated/Filtered) ---
   async function fetchArticles(
     options = {
       append: false,
       query: queryTerm.value,
-      orderBy: "date", // Default order
+      orderBy: "date",
+      sources: activeSources.value,
+      tags: activeTags.value,
+      novelty: minNovelty.value,
     }
   ) {
-    // --- Abort previous fetch if running ---
-    if (abortController.value) {
-      console.log("Fetch already in progress, cancelling previous...");
-      abortController.value.abort(); // Abort the previous fetch
+    // If showing bookmarks, do nothing here
+    if (showOnlyBookmarks.value) {
+      console.log("fetchArticles skipped: showing bookmarks.");
+      return;
     }
-    // Create a new AbortController for this fetch
+
+    if (abortController.value) {
+      abortController.value.abort();
+    }
     const controller = new AbortController();
     abortController.value = controller;
-    // --- End Abort Logic ---
 
-    // Set loading state *here*
     isLoading.value = true;
-    error.value = null; // Clear previous errors for this specific fetch type
-
+    // Don't clear error immediately if appending, only on new load
     if (!options.append) {
-      // Reset pagination state only when not appending (i.e., new filter/search/order)
+      error.value = null;
       offset.value = 0;
       allLoaded.value = false;
-      // Don't clear articles immediately, wait for results or error
     }
 
-    console.log("fetchArticles called with options:", options);
+    console.log("Fetching NORMAL articles with options:", options);
 
     try {
       let url = `${API_BASE_URL}/api/content`;
       const params = new URLSearchParams();
 
-      // Build query parameters
+      // Build query parameters from options
       if (options.query) params.append("search", options.query);
-      if (activeSources.value.length > 0)
-        params.append("sources", activeSources.value.join(","));
-      if (activeTags.value.length)
-        params.append("tags", activeTags.value.join(","));
-      if (minNovelty.value !== null && typeof minNovelty.value === "number") {
-        // Backend expects the 1-5 bucket number directly now
-        params.append("novelty_bucket", minNovelty.value.toString());
+      if (options.sources?.length > 0)
+        params.append("sources", options.sources.join(","));
+      if (options.tags?.length) params.append("tags", options.tags.join(","));
+      if (options.novelty !== null && typeof options.novelty === "number") {
+        params.append("novelty_bucket", options.novelty.toString());
       }
       params.append("limit", pageSize.toString());
       params.append("offset", offset.value.toString());
@@ -147,9 +203,8 @@ export function useArticles() {
       const queryString = params.toString();
       if (queryString) url += `?${queryString}`;
 
-      console.log("Fetching articles with URL:", url); // Log the URL
+      console.log("Fetching articles with URL:", url);
 
-      // Pass the signal to the fetch call
       const response = await fetch(url, { signal: controller.signal });
 
       if (!response.ok) {
@@ -158,216 +213,281 @@ export function useArticles() {
 
       const newArticles = await response.json();
 
-      // Process results
       if (options.append) {
-        const existingIds = new Set(
-          articles.value.map((a) => a.id || a.source_url)
-        );
+        const existingIds = new Set(articles.value.map((a) => a.id));
         const uniqueNewArticles = newArticles.filter(
-          (a) => !existingIds.has(a.id || a.source_url)
+          (a) => !existingIds.has(a.id)
         );
         articles.value.push(...uniqueNewArticles);
       } else {
-        articles.value = newArticles; // Replace existing articles
+        articles.value = newArticles; // Replace
       }
 
-      // Update pagination state
       offset.value += newArticles.length;
       if (newArticles.length < pageSize) {
         allLoaded.value = true;
       }
     } catch (err) {
       if (err.name === "AbortError") {
-        console.log("Fetch aborted"); // This is expected if a new fetch starts quickly
+        console.log("Fetch aborted");
       } else {
         console.error("Error fetching articles:", err);
         error.value = `Failed to load articles: ${err.message}. Please try again later.`;
-        // Clear articles only if it was an initial load/filter error, not append error
         if (!options.append) {
           articles.value = [];
         }
-        allLoaded.value = true; // Stop trying to load more on error
+        allLoaded.value = true; // Stop infinite scroll on error
       }
     } finally {
-      // Only clear loading state and controller if this fetch wasn't aborted by a newer one
       if (abortController.value === controller) {
         isLoading.value = false;
-        abortController.value = null; // Clear the controller ref
+        abortController.value = null;
       }
     }
   }
 
-  // Helper to load all articles in the background
-  async function fetchArticlesUntilAllLoadedInBackground() {
-    // Check allLoaded first, as isLoading might be true from a recent fetch that just finished
-    if (allLoaded.value || isLoading.value) return;
+  // --- Fetch Bookmarked Articles (Specific IDs) ---
+  async function fetchBookmarkedArticles() {
+    const idsToFetch = Array.from(bookmarkedIds.value);
+    console.log("Fetching bookmarked articles for IDs:", idsToFetch);
 
-    console.log("Starting background fetch until all loaded...");
-    while (!allLoaded.value && !error.value) {
-      // fetchArticles now manages isLoading and cancellation internally
-      await fetchArticles({ append: true });
-      // Optional small delay if needed, but likely not necessary
-      // await new Promise(resolve => setTimeout(resolve, 50));
-    }
-    console.log(
-      "Background fetch finished. All loaded:",
-      allLoaded.value,
-      "Error:",
-      error.value
-    );
-  }
-
-  // Function to fetch a single article by ID if not present
-  async function ensureArticleLoaded(id) {
-    if (articles.value.find((a) => a.id === id)) {
-      return true; // Already loaded
+    if (idsToFetch.length === 0) {
+      articles.value = [];
+      allLoaded.value = true; // Nothing to load
+      isLoading.value = false;
+      error.value = null;
+      console.log("No bookmarked IDs to fetch.");
+      return;
     }
 
-    // Don't use the main isLoading flag for this, maybe a local one if needed
-    // let specificLoading = ref(true);
+    if (abortController.value) {
+      abortController.value.abort();
+    }
+    const controller = new AbortController();
+    abortController.value = controller;
+
+    isLoading.value = true;
+    error.value = null;
+
     try {
-      const response = await fetch(`${API_BASE_URL}/api/content/${id}`);
-      if (!response.ok) {
-        if (response.status === 404) {
-          console.warn(`Article with ID ${id} not found.`);
-          error.value = `Article ${id} could not be found. It might have been removed.`;
-          return false;
-        }
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      const article = await response.json();
+      // *** Use the new backend endpoint ***
+      // Adjust URL and parameter name ('ids') as needed based on your backend implementation
+      const params = new URLSearchParams();
+      params.append("ids", idsToFetch.join(","));
+      const url = `${API_BASE_URL}/api/content/by-ids?${params.toString()}`;
+      // OR if modifying existing endpoint:
+      // const url = `${API_BASE_URL}/api/content?${params.toString()}`;
 
-      // Add to list and maintain sort order (date descending)
-      articles.value.push(article);
-      articles.value.sort(
-        (a, b) => new Date(b.published_date) - new Date(a.published_date)
-      );
-      return true;
+      console.log("Fetching bookmarked articles with URL:", url);
+
+      const response = await fetch(url, { signal: controller.signal });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! Status: ${response.status}`);
+      }
+
+      const bookmarkedArticles = await response.json();
+      articles.value = bookmarkedArticles; // Replace current articles
+      allLoaded.value = true; // We fetched all requested bookmarks, no more pages
+      offset.value = bookmarkedArticles.length; // Update offset just in case
     } catch (err) {
-      console.error(`Failed to fetch single article ${id}:`, err);
-      error.value = `Failed to load details for article ${id}.`;
-      return false;
+      if (err.name === "AbortError") {
+        console.log("Bookmark fetch aborted");
+      } else {
+        console.error("Error fetching bookmarked articles:", err);
+        error.value = `Failed to load bookmarked articles: ${err.message}.`;
+        articles.value = []; // Clear articles on error
+        allLoaded.value = true; // Prevent further loading attempts
+      }
     } finally {
-      // specificLoading.value = false;
+      if (abortController.value === controller) {
+        isLoading.value = false;
+        abortController.value = null;
+      }
     }
   }
 
-  // Function to update the active sources directly
+  // --- Update Filters ---
   function updateActiveSources(newSources) {
     const uniqueNewSources = [...new Set(newSources)];
-    if (
-      uniqueNewSources.length !== activeSources.value.length ||
-      !uniqueNewSources.every((source) => activeSources.value.includes(source))
-    ) {
+    // Check if changed only if not showing bookmarks (filter doesn't apply then)
+    if (!showOnlyBookmarks.value) {
+      if (
+        uniqueNewSources.length !== activeSources.value.length ||
+        !uniqueNewSources.every((source) =>
+          activeSources.value.includes(source)
+        )
+      ) {
+        activeSources.value = uniqueNewSources;
+        // Watcher will trigger refetch
+      }
+    } else {
+      // Store the selection even if not active, so it's remembered
+      // when the user toggles bookmarks off.
       activeSources.value = uniqueNewSources;
-      // Watcher will trigger refetch
-      // Reset pagination state when filters change (handled by watcher calling fetchArticles)
     }
   }
 
-  // Function to update the active tags directly
   function updateActiveTags(newTags) {
     const uniq = [...new Set(newTags)];
-    if (
-      uniq.length !== activeTags.value.length ||
-      !uniq.every((t) => activeTags.value.includes(t))
-    ) {
+    if (!showOnlyBookmarks.value) {
+      if (
+        uniq.length !== activeTags.value.length ||
+        !uniq.every((t) => activeTags.value.includes(t))
+      ) {
+        activeTags.value = uniq;
+        // Watcher will trigger refetch
+      }
+    } else {
       activeTags.value = uniq;
-      // Watcher will trigger refetch
-      // Reset pagination state when filters change (handled by watcher calling fetchArticles)
     }
   }
 
   // --- Watchers ---
+
+  // Watcher for standard filters (query, sources, tags, novelty)
   watch(
     [queryTerm, activeSources, activeTags, minNovelty],
-    (
-      [newQueryTerm, newActiveSources, newActiveTags, newMinNovelty],
-      [oldQueryTerm, oldActiveSources, oldActiveTags, oldMinNovelty]
-    ) => {
-      // Prevent watcher runs during initial setup
-      if (isInitializing.value) {
-        console.log("Watcher triggered during initialization, skipping fetch.");
-        return;
+    () => {
+      if (isInitializing.value) return;
+      // *** IMPORTANT: Only trigger fetch if NOT showing bookmarks ***
+      if (!showOnlyBookmarks.value) {
+        console.log("Standard filters changed, fetching normal articles.");
+        fetchArticles({
+          append: false, // Reset list
+          query: queryTerm.value,
+          orderBy: "date", // Reset to default order on filter change
+          sources: activeSources.value,
+          tags: activeTags.value,
+          novelty: minNovelty.value,
+        });
+        fetchSourceStats(); // Update source counts based on new filters
+      } else {
+        console.log(
+          "Standard filters changed, but skipping fetch because bookmarks are shown."
+        );
       }
-
-      console.log("Filters changed:", {
-        newQueryTerm,
-        newActiveSources,
-        newActiveTags,
-        newMinNovelty,
-      });
-
-      // Reset pagination and fetch new articles whenever any filter changes
-      // The fetchArticles call below handles resetting offset/allLoaded via append: false
-      // Default to 'date' order when filters change.
-      fetchArticles({ append: false, query: newQueryTerm, orderBy: "date" });
-
-      // Also refetch source stats as counts might change based on query/tags
-      fetchSourceStats();
-      // No need to refetch availableTags unless the backend changes
     },
-    { deep: true } // Use deep watch for arrays/objects
+    { deep: true }
   );
+
+  // Watcher for the bookmark toggle
+  watch(showOnlyBookmarks, (isShowing) => {
+    if (isInitializing.value) return;
+    console.log("Bookmark toggle changed to:", isShowing);
+    if (isShowing) {
+      // Fetch only bookmarked articles
+      fetchBookmarkedArticles();
+      // Optionally clear other filters visually or disable them? For now, just fetch.
+    } else {
+      // Fetch normal articles with current filters
+      fetchArticles({
+        append: false, // Reset list
+        query: queryTerm.value,
+        orderBy: "date", // Or current order
+        sources: activeSources.value,
+        tags: activeTags.value,
+        novelty: minNovelty.value,
+      });
+    }
+    // Refetch stats when toggling bookmarks on/off as filters apply differently
+    fetchSourceStats();
+    fetchAvailableTags(); // Re-evaluate active tags initialization
+  });
+
+  // Watch bookmarks set itself (only for saving, fetch is handled by toggleBookmark/showOnlyBookmarks watcher)
+  // watch(bookmarkedIds, saveBookmarksToLocalStorage, { deep: true }); // Already handled in toggleBookmark
 
   // --- Initial data loading on mount ---
   onMounted(async () => {
     isInitializing.value = true;
-    // Don't set global isLoading here. Let fetchArticles handle it.
+    loadBookmarksFromLocalStorage();
     try {
-      // Fetch metadata first. These usually don't need a global spinner.
+      // Fetch metadata first
       await fetchAvailableTags();
-      await fetchAllSourceStats(); // This sets initial activeSources/activeTags
+      await fetchAllSourceStats(); // Sets initial activeSources
 
-      // Now fetch initial articles. fetchArticles will set isLoading = true.
-      // It uses the default orderBy: 'date'
-      await fetchArticles();
+      // Fetch initial articles (normal feed)
+      await fetchArticles({ append: false }); // Use default options
     } catch (e) {
-      // Catch potential errors during the initial metadata fetches as well
       console.error("Error during initial mount:", e);
       error.value = "Failed to load initial data.";
-      isLoading.value = false; // Ensure loading is off if initial fetches fail
     } finally {
-      isInitializing.value = false; // Set flag to false AFTER all initial setup attempts
-      // isLoading is managed by fetchArticles, no need to set it false here unless there was an error above
+      isInitializing.value = false;
     }
   });
 
-  // --- Fetch Random Order ---
-  async function fetchRandomOrder() {
-    // No need to check isLoading here, fetchArticles handles cancellation
-    console.log("Requesting random order...");
+  // --- Other Methods ---
 
-    // Reset pagination state and trigger fetch with random order
-    // fetchArticles with append: false handles resetting offset/allLoaded
+  // Fetch Random Order - Should only apply to the normal feed
+  async function fetchRandomOrder() {
+    if (showOnlyBookmarks.value) {
+      console.log("Random order skipped: showing bookmarks.");
+      // Maybe show a notification to the user?
+      return;
+    }
+    console.log("Requesting random order...");
     await fetchArticles({
       append: false,
-      query: queryTerm.value, // Keep current search term
-      orderBy: "random", // Explicitly set random order
+      query: queryTerm.value,
+      orderBy: "random",
+      sources: activeSources.value,
+      tags: activeTags.value,
+      novelty: minNovelty.value,
     });
   }
 
+  // Load More Articles - Only for the normal feed
+  function loadMore() {
+    if (!isLoading.value && !allLoaded.value && !showOnlyBookmarks.value) {
+      console.log("Loading more articles...");
+      fetchArticles({
+        append: true, // Append results
+        query: queryTerm.value,
+        orderBy: "date", // Or current order
+        sources: activeSources.value,
+        tags: activeTags.value,
+        novelty: minNovelty.value,
+      });
+    } else {
+      console.log("Load more skipped. Conditions:", {
+        isLoading: isLoading.value,
+        allLoaded: allLoaded.value,
+        showOnlyBookmarks: showOnlyBookmarks.value,
+      });
+    }
+  }
+
+  // --- REMOVED ---
+  // const filteredArticles = computed(...)
+  // fetchArticlesUntilAllLoadedInBackground()
+  // ensureArticleLoaded() - Could be adapted for bookmarks if needed, but likely not necessary
+
   // Return the reactive state and methods
   return {
-    articles,
-    isLoading, // Expose isLoading for UI spinners
+    articles, // Directly use this ref now
+    isLoading,
     error,
-    fetchArticles, // Might not be needed externally if covered by other functions
-    availableSources,
+    fetchArticles, // Expose if needed for manual refresh?
+    availableSources, // Still needed for filter component display
     activeSources,
     updateActiveSources,
-    searchTerm, // For the input v-model
-    sourceCounts,
-    allAvailableSources, // Pass to SourceFilters
-    allSourceCounts, // Pass to SourceFilters
-    availableTags, // Pass to TagFilters
+    searchTerm,
+    sourceCounts, // Still needed for filter component display
+    allAvailableSources,
+    allSourceCounts,
+    availableTags,
     activeTags,
     updateActiveTags,
-    queryTerm, // Used internally and potentially for display
-    allLoaded, // Pass to ArticleList for infinite scroll logic
-    fetchArticlesUntilAllLoadedInBackground, // For drawer pre-loading
-    ensureArticleLoaded, // For scrolling to specific article
-    minNovelty, // For NoveltyFilter v-model
-    fetchRandomOrder, // For the dice button
+    queryTerm,
+    allLoaded, // Reflects pagination state *only for the normal feed*
+    minNovelty,
+    fetchRandomOrder,
+    // Bookmark related
+    bookmarkedIds,
+    showOnlyBookmarks,
+    toggleBookmark,
+    // resetBookmarkFilter, // Not strictly needed if clearFilters handles it
+    loadMore,
   };
 }

@@ -3,7 +3,11 @@
     <div
       class="w-full max-w-[980px] mx-auto flex flex-col items-start gap-4 md:flex-row md:justify-between md:items-center"
     >
-      <h1 class="text-2xl font-bold text-gray-800">AI Safety Feed</h1>
+      <h1 class="text-2xl font-bold text-gray-800">
+        <router-link to="/" class="hover:text-blue-600 transition-colors"
+          >AI Safety Feed</router-link
+        >
+      </h1>
       <div
         class="flex items-center gap-2 md:gap-3 flex-wrap w-full justify-start md:w-auto md:justify-end"
       >
@@ -18,6 +22,17 @@
           <CirclePlus class="h-4 w-4" stroke-width="2" />
           Submit Content
         </a>
+
+        <!-- About Link -->
+        <router-link
+          to="/about"
+          class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 gap-1"
+          aria-label="About this feed"
+          title="About this feed"
+        >
+          About
+        </router-link>
+
         <!-- Feedback Button -->
         <a
           href="https://forms.gle/rZodzMMSFh2sFMXZA"

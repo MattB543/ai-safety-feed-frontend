@@ -29,10 +29,19 @@ const props = defineProps({
     type: Boolean,
     required: true,
   },
+  // Set of bookmarked article IDs
+  bookmarkedIds: {
+    type: Set,
+    required: true,
+  },
+  isShowingBookmarks: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 // --- Emits ---
-const emit = defineEmits(["clear-filters", "show-similar", "load-more"]); // Added "load-more"
+const emit = defineEmits(["clear-filters", "load-more", "toggle-bookmark"]); // Removed "show-similar"
 
 // --- Infinite Scroll Logic ---
 const loadMoreTrigger = ref(null); // Template ref for the sentinel div
@@ -143,8 +152,13 @@ watch(
       v-else-if="articles.length === 0 && !isLoading"
       class="text-center text-gray-600 py-10 space-y-4 flex-grow flex flex-col items-center justify-center"
     >
-      <p>No articles found. Try adjusting your search or filters.</p>
+      <p v-if="props.isShowingBookmarks">
+        You haven't bookmarked any articles yet, or none match your other active
+        filters.
+      </p>
+      <p v-else>No articles found. Try adjusting your search or filters.</p>
       <button
+        v-if="!props.isShowingBookmarks"
         @click="emit('clear-filters')"
         class="text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-100 py-1 px-3 rounded cursor-pointer"
       >
@@ -161,7 +175,8 @@ watch(
       >
         <ArticleCard
           :article="article"
-          @show-similar="emit('show-similar', $event)"
+          :is-bookmarked="props.bookmarkedIds.has(article.id)"
+          @toggle-bookmark="emit('toggle-bookmark', article.id)"
         />
       </li>
     </template>
@@ -176,7 +191,7 @@ watch(
     <!-- Sentinel Element for Intersection Observer -->
     <!-- Only render the trigger if there are articles and not all are loaded -->
     <div
-      v-if="articles.length > 0 && !allLoaded"
+      v-if="articles.length > 0 && !allLoaded && !props.isShowingBookmarks"
       ref="loadMoreTrigger"
       class="h-10"
     ></div>

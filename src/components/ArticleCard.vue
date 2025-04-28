@@ -11,7 +11,9 @@ import {
   Key as IconKey,
   BuildingBank as IconBuildingBank,
   ListSearch as IconListSearch,
+  Bookmark as IconBookmark,
 } from "@vicons/tabler";
+import IconBookmarkFilled from "./icons/IconBookmarkFilled.vue";
 import { NTooltip, NButton } from "naive-ui";
 import { formatDate, formatTagForDisplay } from "../utils/formatters";
 import MarkdownIt from "markdown-it";
@@ -23,8 +25,16 @@ const props = defineProps({
     type: Object,
     required: true,
   },
+  hideSimilarButton: {
+    type: Boolean,
+    default: false,
+  },
+  isBookmarked: {
+    type: Boolean,
+    default: false,
+  },
 });
-const emit = defineEmits(["show-similar", "view-article"]);
+const emit = defineEmits(["view-article", "toggle-bookmark"]);
 
 // --- State ---
 const isParagraphSummaryExpanded = ref(false);
@@ -129,7 +139,7 @@ function toggleNovelty() {
 </script>
 
 <template>
-  <article class="bg-white px-6" :id="`article-${article.id}`">
+  <article class="bg-white px-6" :id="`post-${article.id}`">
     <!-- Top Section: Image on Left, Info on Right -->
     <div class="flex flex-col md:flex-row gap-4 mb-4">
       <div v-if="article.image_url" class="md:w-1/4 flex-shrink-0 max-w-sm">
@@ -232,58 +242,69 @@ function toggleNovelty() {
         <!-- Action Buttons (Left Side) -->
         <div class="flex items-center flex-wrap gap-2">
           <n-button
-            v-if="article.paragraph_summary"
+            v-if="article.paragraph_summary || article.key_implication"
             @click="toggleParagraphSummary"
             size="small"
             :type="isParagraphSummaryExpanded ? 'info' : 'tertiary'"
+            :title="
+              isParagraphSummaryExpanded
+                ? 'Hide Main Points'
+                : 'Show Main Points'
+            "
           >
             <template #icon>
               <IconListDetails stroke-width="2" class="w-4 h-4" />
             </template>
             {{ isParagraphSummaryExpanded ? "Main Points" : "Main Points" }}
           </n-button>
-          <n-button
-            v-if="article.key_implication"
-            @click="toggleKeyImplication"
-            size="small"
-            :title="
-              isKeyImplicationExpanded ? 'Implication' : 'Show Implication'
-            "
-            :type="isKeyImplicationExpanded ? 'info' : 'tertiary'"
-          >
-            <template #icon>
-              <IconKey stroke-width="2" class="w-4 h-4" />
-            </template>
-            {{ isKeyImplicationExpanded ? "Implication" : "Implication" }}
-          </n-button>
           <!-- New Novelty Display -->
           <n-button
-            v-if="article.novelty_note && noveltyRating > 0"
+            v-if="article.novelty_score !== null && article.novelty_note"
             @click="toggleNovelty"
             size="small"
-            title="Click to toggle novelty details"
             :type="isNoveltyExpanded ? 'info' : 'tertiary'"
+            :title="
+              isNoveltyExpanded ? 'Hide Novelty Note' : 'Show Novelty Note'
+            "
           >
             <template #icon>
               <IconSparklesCustom class="w-4 h-4" />
             </template>
             Novelty: {{ noveltyRating }}/5
           </n-button>
+          <a
+            v-if="!hideSimilarButton"
+            :href="`/similar/${article.id}`"
+            target="_blank"
+            rel="noopener noreferrer"
+            class="no-underline"
+            title="View similar posts"
+          >
+            <n-button size="small" type="tertiary">
+              <template #icon>
+                <IconListSearch stroke-width="2" class="w-4 h-4" />
+              </template>
+              Similar Posts
+            </n-button>
+          </a>
+          <!-- Bookmark Button -->
           <n-button
+            @click="emit('toggle-bookmark', article.id)"
             size="small"
             type="tertiary"
-            @click="
-              emit('show-similar', { id: article.id, title: article.title })
-            "
+            :title="isBookmarked ? 'Remove Bookmark' : 'Add Bookmark'"
           >
             <template #icon>
-              <IconListSearch stroke-width="2" class="w-4 h-4" />
+              <component
+                :is="isBookmarked ? IconBookmarkFilled : IconBookmark"
+                stroke-width="2"
+                class="w-4 h-4"
+                :class="{ 'text-blue-600 fill-current': isBookmarked }"
+              />
             </template>
-            Similar Posts
           </n-button>
         </div>
 
-        <!-- Author & Date (Right Side) - MOVED HERE -->
         <ul
           class="flex justify-start sm:justify-end flex-wrap items-center gap-x-1.5 text-sm text-gray-500 mt-2 sm:mt-0"
         >
@@ -358,39 +379,45 @@ function toggleNovelty() {
         </ul>
       </div>
 
-      <!-- Implication (Conditional) -->
-      <div
-        v-if="isKeyImplicationExpanded && article.key_implication"
-        class="text-gray-700 mt-4 bg-gray-100 px-3 py-2 rounded-md mb-4"
-      >
-        <span class="block text-sm text-gray-500 font-medium mb-1"
-          >Implication</span
-        >
-        <div class="text-gray-700">
-          {{ article.key_implication }}
-        </div>
-      </div>
-
       <!-- Novelty note (Conditional) -->
       <div
         v-if="isNoveltyExpanded && article.novelty_note"
         class="text-gray-700 mt-4 bg-gray-100 px-3 py-2 rounded-md mb-4"
       >
         <span class="block text-sm text-gray-500 font-medium mb-1">
-          What's New ({{ noveltyRating }}/5 Score)
+          Novelty ({{ noveltyRating }}/5 Score)
         </span>
         <div class="text-gray-700" v-html="formattedNoveltyNote"></div>
       </div>
 
       <!-- Paragraph Summary (Conditional) -->
       <div
-        v-if="isParagraphSummaryExpanded && article.paragraph_summary"
-        class="text-gray-700 mt-4 bg-gray-100 px-3 py-2 rounded-md prose max-w-none"
+        v-if="isParagraphSummaryExpanded"
+        class="text-gray-700 mt-4 bg-gray-100 px-3 py-2 rounded-md prose max-w-none mb-4"
       >
-        <span class="block text-sm text-gray-500 font-medium mb-1"
-          >Main Points</span
+        <!-- Main Points Content -->
+        <div v-if="article.paragraph_summary" class="mb-3">
+          <span class="block text-sm text-gray-500 font-medium mb-1"
+            >Main Points</span
+          >
+          <div class="text-gray-700" v-html="formattedParagraphSummary"></div>
+        </div>
+
+        <!-- Divider and Implication Content -->
+        <div
+          v-if="article.paragraph_summary && article.key_implication"
+          class="my-3"
         >
-        <div class="text-gray-700" v-html="formattedParagraphSummary"></div>
+          <hr class="border-gray-200" />
+        </div>
+        <div v-if="article.key_implication">
+          <span class="block text-sm text-gray-500 font-medium mb-1"
+            >Implication</span
+          >
+          <div class="text-gray-700">
+            {{ article.key_implication }}
+          </div>
+        </div>
       </div>
     </div>
   </article>
