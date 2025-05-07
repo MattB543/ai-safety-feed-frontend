@@ -24,7 +24,9 @@
 
     <!-- Section 2: Similar Articles -->
     <div>
-      <div class="flex justify-between items-center mb-6 border-b pb-2">
+      <div
+        class="flex justify-between items-center mb-6 border-b pb-2 border-gray-300"
+      >
         <h2 class="text-2xl font-semibold text-gray-700">Similar Posts</h2>
 
         <!-- Right-aligned section: Helper text + Button -->
@@ -90,7 +92,12 @@
       </div>
       <ul v-else class="bg-white rounded-lg shadow-md divide-y divide-gray-200">
         <li v-for="similar in displayedArticles" :key="similar.id" class="p-6">
-          <ArticleCard :article="similar" :hide-similar-button="true" />
+          <ArticleCard
+            :article="similar"
+            :hide-similar-button="true"
+            :is-bookmarked="bookmarkedIds.has(similar.id)"
+            @toggle-bookmark="() => toggleBookmark(similar.id)"
+          />
         </li>
       </ul>
     </div>
@@ -99,20 +106,26 @@
 
 <script setup>
 import { ref, onMounted, watch, computed } from "vue";
+import { useHead } from "@vueuse/head"; // Import useHead
+import { useRoute } from "vue-router"; // <-- Import useRoute
 import ArticleCard from "../components/ArticleCard.vue";
 import { NSpin, NButton, NIcon } from "naive-ui";
 import IconSparklesCustom from "../components/icons/IconSparklesCustom.vue"; // Import the sparkles icon
 import IconArrowBack from "../components/icons/IconArrowBack.vue"; // Import an arrow icon
+import { useArticles } from "../composables/useArticles"; // Import useArticles
 
-const props = defineProps({
-  id: {
-    type: [String, Number],
-    required: true,
-  },
-});
+// Define API_BASE_URL from environment variables
+const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
 
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+// Get route object
+const route = useRoute();
+
+// State for the parsed ID
+const articleId = ref(null);
+const originalSlug = ref(""); // Optional: store the slug too
+
+// --- Get bookmark state from useArticles ---
+const { bookmarkedIds, toggleBookmark } = useArticles();
 
 // State for Original Article
 const originalArticle = ref(null);
@@ -179,12 +192,18 @@ const isToggleButtonDisabled = computed(() => {
 
 // --- Fetching Functions ---
 
-async function fetchOriginalArticle(articleId) {
+async function fetchOriginalArticle(idToFetch) {
+  // <-- Use passed ID
   isLoadingOriginal.value = true;
   errorOriginal.value = null;
   originalArticle.value = null;
+  if (!idToFetch) {
+    errorOriginal.value = "Article ID is missing.";
+    isLoadingOriginal.value = false;
+    return;
+  }
   try {
-    const response = await fetch(`${API_BASE_URL}/api/content/${articleId}`);
+    const response = await fetch(`${API_BASE_URL}/api/content/${idToFetch}`); // <-- Use passed ID
     if (!response.ok) {
       throw new Error(
         `HTTP error! Status: ${response.status} ${response.statusText}`
@@ -193,21 +212,27 @@ async function fetchOriginalArticle(articleId) {
     originalArticle.value = await response.json();
   } catch (e) {
     console.error("Failed to fetch original article:", e);
-    errorOriginal.value = `Failed to load original article (ID: ${articleId}). ${e.message}`;
+    errorOriginal.value = `Failed to load original article (ID: ${idToFetch}). ${e.message}`; // <-- Use passed ID
   } finally {
     isLoadingOriginal.value = false;
   }
 }
 
 // Fetch initial vector-based similar articles
-async function fetchVectorSimilar(articleId) {
+async function fetchVectorSimilar(idToFetch) {
+  // <-- Use passed ID
   isLoadingInitialSimilar.value = true;
   errorInitialSimilar.value = null;
   initialSimilarArticles.value = []; // Clear previous results
   showingAiResults.value = false; // Reset view state
+  if (!idToFetch) {
+    errorInitialSimilar.value = "Article ID is missing for similar search.";
+    isLoadingInitialSimilar.value = false;
+    return;
+  }
   try {
     const response = await fetch(
-      `${API_BASE_URL}/api/similar/${articleId}/vector?n=10`
+      `${API_BASE_URL}/api/similar/${idToFetch}/vector?n=10` // <-- Use passed ID
     ); // Fetch 10 vector results
     if (!response.ok) {
       throw new Error(
@@ -224,14 +249,20 @@ async function fetchVectorSimilar(articleId) {
 }
 
 // Fetch AI-ranked similar articles (runs in background)
-async function fetchAiRankedSimilar(articleId) {
+async function fetchAiRankedSimilar(idToFetch) {
+  // <-- Use passed ID
   isLoadingAiRanked.value = true;
   errorAiRanked.value = null;
   aiRankedSimilarArticles.value = []; // Clear previous results
   aiResultsAvailable.value = false; // Reset availability
+  if (!idToFetch) {
+    errorAiRanked.value = "Article ID is missing for AI ranking.";
+    isLoadingAiRanked.value = false;
+    return;
+  }
   try {
     const response = await fetch(
-      `${API_BASE_URL}/api/similar/${articleId}/ai?n=10`
+      `${API_BASE_URL}/api/similar/${idToFetch}/ai?n=10` // <-- Use passed ID
     ); // Fetch 10 AI results
     if (!response.ok) {
       const errorData = await response.text(); // Try to get error body
@@ -253,20 +284,132 @@ async function fetchAiRankedSimilar(articleId) {
 // --- Lifecycle and Watchers ---
 
 function loadAllData(articleId) {
-  fetchOriginalArticle(articleId);
+  // Reset head data on new load
+  // useHead({
+  //   title: "Loading Similar Posts...",
+  //   meta: [],
+  // });
+  fetchOriginalArticle(articleId); // fetchOriginalArticle will update head when done
   fetchVectorSimilar(articleId); // Fetch vector results immediately
   fetchAiRankedSimilar(articleId); // Start fetching AI results in parallel
 }
 
+// --- SEO Head Management ---
+useHead(
+  computed(() => {
+    if (isLoadingOriginal.value) {
+      return {
+        title: "Loading Similar Posts...",
+        meta: [],
+      };
+    }
+    if (errorOriginal.value || !originalArticle.value) {
+      return {
+        title: "Error Loading Article - Similar Posts",
+        meta: [],
+      };
+    }
+
+    const article = originalArticle.value;
+    const title = `Similar Posts to: ${article.title}`;
+    const description =
+      article.sentence_summary ||
+      article.paragraph_summary ||
+      "Find AI Safety posts similar to this one.";
+    const authors = article.authors ? article.authors.join(", ") : "Unknown";
+
+    return {
+      title: title,
+      meta: [
+        { name: "description", content: description },
+        { name: "author", content: authors },
+        { property: "og:title", content: title },
+        { property: "og:description", content: description },
+        { property: "og:type", content: "website" },
+        // Add image if available
+        ...(article.image_url
+          ? [{ property: "og:image", content: article.image_url }]
+          : []),
+        // Add published time if available
+        ...(article.published_date
+          ? [
+              {
+                property: "article:published_time",
+                content: new Date(article.published_date).toISOString(),
+              },
+            ]
+          : []),
+        // Add authors if available
+        ...(article.authors
+          ? [{ property: "article:author", content: authors }]
+          : []),
+        // Twitter card
+        { name: "twitter:card", content: "summary_large_image" },
+        { name: "twitter:title", content: title },
+        { name: "twitter:description", content: description },
+        ...(article.image_url
+          ? [{ name: "twitter:image", content: article.image_url }]
+          : []),
+      ],
+    };
+  })
+);
+
 onMounted(() => {
-  loadAllData(props.id);
+  const slugWithId = route.params.slugWithId;
+  if (typeof slugWithId === "string") {
+    const lastDashIndex = slugWithId.lastIndexOf("-");
+    if (lastDashIndex > -1) {
+      const idStr = slugWithId.substring(lastDashIndex + 1);
+      const potentialId = parseInt(idStr, 10);
+      if (!isNaN(potentialId)) {
+        articleId.value = potentialId;
+        originalSlug.value = slugWithId.substring(0, lastDashIndex); // Store slug
+
+        // Fetch data using the parsed ID
+        fetchOriginalArticle(articleId.value);
+        fetchVectorSimilar(articleId.value);
+        fetchAiRankedSimilar(articleId.value);
+      } else {
+        console.error("Parsed ID is not a valid number:", idStr);
+        errorOriginal.value = "Invalid article ID format in URL.";
+        errorInitialSimilar.value = "Invalid article ID format in URL.";
+      }
+    } else {
+      console.error("Could not find '-' separator in slugWithId:", slugWithId);
+      errorOriginal.value = "Invalid URL format for similar posts.";
+      errorInitialSimilar.value = "Invalid URL format for similar posts.";
+    }
+  } else {
+    console.error("slugWithId param is missing or not a string:", slugWithId);
+    errorOriginal.value = "Missing article identifier in URL.";
+    errorInitialSimilar.value = "Missing article identifier in URL.";
+  }
 });
 
 watch(
-  () => props.id,
-  (newId, oldId) => {
-    if (newId !== oldId) {
-      loadAllData(newId);
+  () => route.params.slugWithId,
+  (newSlugWithId) => {
+    if (newSlugWithId && typeof newSlugWithId === "string") {
+      // Re-parse and fetch if the parameter changes
+      const lastDashIndex = newSlugWithId.lastIndexOf("-");
+      if (lastDashIndex > -1) {
+        const idStr = newSlugWithId.substring(lastDashIndex + 1);
+        const potentialId = parseInt(idStr, 10);
+        if (!isNaN(potentialId)) {
+          articleId.value = potentialId;
+          originalSlug.value = newSlugWithId.substring(0, lastDashIndex);
+          fetchOriginalArticle(articleId.value);
+          fetchVectorSimilar(articleId.value);
+          fetchAiRankedSimilar(articleId.value);
+        } else {
+          /* handle error */
+        }
+      } else {
+        /* handle error */
+      }
+    } else {
+      /* handle error */
     }
   }
 );

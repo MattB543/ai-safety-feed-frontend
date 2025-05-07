@@ -3,7 +3,8 @@ import { ref, computed, watch, defineProps, defineEmits } from "vue";
 import { NButton, NPopover, NCheckbox, NCheckboxGroup, NIcon } from "naive-ui";
 import { Filter } from "@vicons/tabler";
 
-const ALL_SOURCES_VALUE = "__ALL__";
+// Remove the special value, we'll handle 'All' logic separately
+// const ALL_SOURCES_VALUE = "__ALL__";
 
 const props = defineProps({
   availableSources: {
@@ -21,28 +22,45 @@ const props = defineProps({
     required: true,
     default: () => ({}),
   },
+  disabled: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(["update-sources"]);
 
 const showPopover = ref(false);
-// local copy edited inside the popover; we commit on "Apply"
+// Local copy edited inside the popover; we commit on "Apply"
 const localSelection = ref([...props.activeSources]);
 
-// Add computed property for sorted sources
+// Computed property to determine if the "All Sources" checkbox should be checked
+const isAllSelected = computed({
+  get: () =>
+    props.availableSources.length > 0 &&
+    localSelection.value.length === props.availableSources.length,
+  set: (value) => {
+    if (value) {
+      // Check all sources
+      localSelection.value = [...props.availableSources];
+    } else {
+      // Uncheck all sources
+      localSelection.value = [];
+    }
+  },
+});
+
+// Computed property for sorted sources
 const sortedAvailableSources = computed(() => {
   return [...props.availableSources].sort((a, b) => {
     return a.localeCompare(b);
   });
 });
 
-// is *any* filter active (not all OR none)
+// is *any* filter active (not all selected)
 const isFilterActive = computed(() => {
-  const all = props.availableSources;
-  return !(
-    props.activeSources.length === 0 ||
-    (all.length > 0 && props.activeSources.length === all.length)
-  );
+  const allCount = props.availableSources.length;
+  return allCount > 0 && localSelection.value.length !== allCount;
 });
 
 const totalCount = computed(() => {
@@ -53,55 +71,31 @@ const totalCount = computed(() => {
 });
 
 function commit() {
-  // If "All" is checked or nothing is checked, treat as all sources active
-  let nextActive;
-
-  if (
-    localSelection.value.includes(ALL_SOURCES_VALUE) ||
-    localSelection.value.length === 0
-  ) {
-    nextActive = [...props.availableSources];
-  } else {
-    nextActive = localSelection.value.filter((v) => v !== ALL_SOURCES_VALUE);
-  }
-
-  emit("update-sources", nextActive);
+  // Emit the current local selection directly
+  // If localSelection is empty, it means none are selected.
+  // If localSelection has all available sources, it means all are selected.
+  emit("update-sources", [...localSelection.value]);
   showPopover.value = false;
 }
 
+// Watch for external changes to activeSources (e.g., parent component reset)
 watch(
   () => props.activeSources,
-  (val) => {
-    // keep localSelection in sync when parent updates (e.g. external clear)
-    localSelection.value = [...val];
-  }
+  (newActiveSources) => {
+    // Ensure localSelection reflects the actual state from the parent
+    if (
+      JSON.stringify(newActiveSources.slice().sort()) !==
+      JSON.stringify(localSelection.value.slice().sort())
+    ) {
+      localSelection.value = [...newActiveSources];
+    }
+  },
+  { deep: true } // Use deep watch if activeSources might be mutated elsewhere, though ideally it's replaced
 );
 
-watch(localSelection, (newSelection, oldSelection) => {
-  const allSourcesValueIncluded = newSelection.includes(ALL_SOURCES_VALUE);
-  const allSourcesValueWasIncluded = oldSelection.includes(ALL_SOURCES_VALUE);
-
-  if (allSourcesValueIncluded && !allSourcesValueWasIncluded) {
-    // "All Sources" was just checked
-    localSelection.value = [ALL_SOURCES_VALUE, ...props.availableSources];
-  } else if (!allSourcesValueIncluded && allSourcesValueWasIncluded) {
-    // "All Sources" was just unchecked
-    localSelection.value = [];
-  } else if (
-    allSourcesValueIncluded &&
-    newSelection.length < oldSelection.length &&
-    newSelection.length < props.availableSources.length + 1
-  ) {
-    // One of the other sources was unchecked while "All Sources" is checked
-    localSelection.value = newSelection.filter((v) => v !== ALL_SOURCES_VALUE);
-  } else if (
-    !allSourcesValueIncluded &&
-    newSelection.length === props.availableSources.length
-  ) {
-    // All other sources were checked manually
-    localSelection.value = [ALL_SOURCES_VALUE, ...newSelection];
-  }
-});
+// No complex watch needed anymore for localSelection interaction with "All" checkbox,
+// as the computed property `isAllSelected` handles the logic via its getter and setter.
+// watch(localSelection, (newSelection, oldSelection) => { ... removed ... });
 </script>
 
 <template>
@@ -115,6 +109,8 @@ watch(localSelection, (newSelection, oldSelection) => {
     <!-- Trigger button -->
     <template #trigger>
       <button
+        type="button"
+        :disabled="disabled"
         :class="[
           'inline-flex items-center gap-1 px-3 py-2 border border-gray-300 shadow-xs text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50',
           isFilterActive
@@ -129,13 +125,21 @@ watch(localSelection, (newSelection, oldSelection) => {
 
     <!-- Popover content -->
     <div class="p-3 min-w-[150px]">
+      <!-- All Sources Checkbox -->
+      <NCheckbox
+        :checked="isAllSelected"
+        @update:checked="isAllSelected = $event"
+        :disabled="props.availableSources.length === 0"
+        class="mb-2"
+      >
+        All Sources ({{ totalCount }})
+      </NCheckbox>
+
+      <!-- Individual Source Checkboxes -->
       <NCheckboxGroup
         v-model:value="localSelection"
-        class="flex flex-col gap-2"
+        class="flex flex-col gap-2 max-h-60 overflow-y-auto"
       >
-        <NCheckbox :value="ALL_SOURCES_VALUE"
-          >All Sources ({{ totalCount }})</NCheckbox
-        >
         <NCheckbox v-for="s in sortedAvailableSources" :key="s" :value="s">
           {{ s }} ({{ props.counts[s] ?? 0 }})
         </NCheckbox>
@@ -158,4 +162,9 @@ watch(localSelection, (newSelection, oldSelection) => {
   </NPopover>
 </template>
 
-<style scoped></style>
+<style scoped>
+/* Optional: Add some padding to the scrollable area if needed */
+.max-h-60 {
+  padding-right: 4px; /* Add padding for scrollbar */
+}
+</style>

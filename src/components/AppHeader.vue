@@ -11,17 +11,16 @@
       <div
         class="flex items-center gap-2 md:gap-3 flex-wrap w-full justify-start md:w-auto md:justify-end"
       >
-        <!-- Submit Content Button -->
-        <a
-          href="https://forms.gle/Kgy2xe6m7Y32nqKv7"
-          target="_blank"
+        <!-- Create Email Digest Link -->
+        <router-link
+          to="/digest"
           class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 gap-1"
-          aria-label="Submit Content"
-          title="Submit Content"
+          aria-label="Create Email Digest"
+          title="Create Email Digest"
         >
-          <CirclePlus class="h-4 w-4" stroke-width="2" />
-          Submit Content
-        </a>
+          <Mail class="h-4 w-4 mt-[1px]" stroke-width="2" />
+          Email Digest
+        </router-link>
 
         <!-- About Link -->
         <router-link
@@ -80,7 +79,7 @@
 </template>
 
 <script setup>
-import { Download, CirclePlus } from "@vicons/tabler";
+import { Download, Mail } from "@vicons/tabler";
 
 // Define props to accept API_BASE_URL
 const props = defineProps({

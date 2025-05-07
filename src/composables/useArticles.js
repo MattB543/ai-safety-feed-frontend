@@ -3,7 +3,7 @@ import { ref, onMounted, computed, watch } from "vue";
 export function useArticles() {
   // --- State ---
   const articles = ref([]); // Holds the *currently displayed* articles (either normal feed or bookmarks)
-  const isLoading = ref(false);
+  const isLoading = ref(true);
   const error = ref(null);
   const activeSources = ref([]);
   const availableSources = ref([]);
@@ -152,16 +152,7 @@ export function useArticles() {
   }
 
   // --- Fetch Normal Articles (Paginated/Filtered) ---
-  async function fetchArticles(
-    options = {
-      append: false,
-      query: queryTerm.value,
-      orderBy: "date",
-      sources: activeSources.value,
-      tags: activeTags.value,
-      novelty: minNovelty.value,
-    }
-  ) {
+  async function fetchArticles(options) {
     // If showing bookmarks, do nothing here
     if (showOnlyBookmarks.value) {
       console.log("fetchArticles skipped: showing bookmarks.");
@@ -408,7 +399,14 @@ export function useArticles() {
       await fetchAllSourceStats(); // Sets initial activeSources
 
       // Fetch initial articles (normal feed)
-      await fetchArticles({ append: false }); // Use default options
+      await fetchArticles({
+        append: false,
+        query: queryTerm.value,
+        orderBy: "date",
+        sources: activeSources.value,
+        tags: activeTags.value,
+        novelty: minNovelty.value,
+      });
     } catch (e) {
       console.error("Error during initial mount:", e);
       error.value = "Failed to load initial data.";

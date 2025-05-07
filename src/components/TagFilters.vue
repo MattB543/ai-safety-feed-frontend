@@ -4,8 +4,6 @@ import { NButton, NPopover, NCheckbox, NCheckboxGroup, NIcon } from "naive-ui";
 import { Filter } from "@vicons/tabler";
 import { formatTagForDisplay } from "../utils/formatters";
 
-const ALL_TAGS_VALUE = "__ALL__";
-
 const props = defineProps({
   availableTags: {
     type: Array, // Array<{tag: string, post_count: number}>
@@ -17,6 +15,10 @@ const props = defineProps({
     required: true,
     default: () => [],
   },
+  disabled: {
+    type: Boolean,
+    default: false,
+  },
   // counts prop removed as counts are now included in availableTags
 });
 
@@ -24,7 +26,32 @@ const emit = defineEmits(["update-tags"]);
 
 const showPopover = ref(false);
 // local copy edited inside the popover; we commit on "Apply"
-const localSelection = ref([...props.activeTags]);
+// Initialized as empty, will be populated by the watcher immediately
+const localSelection = ref([]);
+
+// New computed property for "All Tags" checkbox state
+const isAllTagsSelected = computed({
+  get() {
+    const allAvailableTagValues = props.availableTags.map((t) => t.tag);
+    if (allAvailableTagValues.length === 0) {
+      return false; // No tags to select, so "All" is not selected.
+    }
+    // Check if localSelection contains all available tags
+    const localSelectionSet = new Set(localSelection.value);
+    return (
+      allAvailableTagValues.every((tag) => localSelectionSet.has(tag)) &&
+      localSelectionSet.size === allAvailableTagValues.length
+    );
+  },
+  set(newValue) {
+    const allAvailableTagValues = props.availableTags.map((t) => t.tag);
+    if (newValue) {
+      localSelection.value = [...allAvailableTagValues];
+    } else {
+      localSelection.value = [];
+    }
+  },
+});
 
 // Add computed property for sorted tags
 const sortedAvailableTags = computed(() => {
@@ -55,95 +82,44 @@ const totalCount = computed(() => {
 });
 
 function commit() {
-  // If "All" is checked or nothing is checked, treat as all tags active
-  let nextActive;
-  const allTagValues = props.availableTags.map((t) => t.tag);
+  // If all available tags are in localSelection, emit all available tags.
+  // Otherwise, emit the contents of localSelection.
+  const allAvailableTagValues = props.availableTags.map((t) => t.tag);
 
-  if (
-    localSelection.value.includes(ALL_TAGS_VALUE) ||
-    localSelection.value.length === 0
-  ) {
-    nextActive = [...allTagValues];
+  const currentLocalSet = new Set(localSelection.value);
+  const allSelectedInPopover =
+    allAvailableTagValues.length > 0 &&
+    allAvailableTagValues.every((tag) => currentLocalSet.has(tag)) &&
+    currentLocalSet.size === allAvailableTagValues.length;
+
+  if (allSelectedInPopover) {
+    emit("update-tags", [...allAvailableTagValues]);
   } else {
-    nextActive = localSelection.value.filter((v) => v !== ALL_TAGS_VALUE);
+    emit("update-tags", [...localSelection.value]);
   }
-
-  emit("update-tags", nextActive);
   showPopover.value = false;
 }
 
 watch(
   [() => props.activeTags, () => props.availableTags],
-  ([newActiveTags, newAvailableTags], [oldActiveTags, oldAvailableTags]) => {
-    const allAvailableTagValues = newAvailableTags.map((t) => t.tag);
-    const allAreActive =
-      newActiveTags.length === allAvailableTagValues.length &&
-      allAvailableTagValues.length > 0;
+  ([newActiveTags, newAvailableTags]) => {
+    // localSelection should directly reflect props.activeTags.
+    // isAllTagsSelected will derive its state from this.
+    const targetSelection = [...newActiveTags];
 
-    let targetLocalSelection;
-    if (allAreActive) {
-      targetLocalSelection = [ALL_TAGS_VALUE, ...allAvailableTagValues];
-    } else {
-      targetLocalSelection = newActiveTags.filter(
-        (tag) => tag !== ALL_TAGS_VALUE
-      );
-    }
+    const currentLocalSet = new Set(localSelection.value);
+    const targetSet = new Set(targetSelection);
 
-    const currentLocalRepresentsAll =
-      localSelection.value.includes(ALL_TAGS_VALUE);
-    const localTags = localSelection.value.filter(
-      (tag) => tag !== ALL_TAGS_VALUE
-    );
-
-    const targetRepresentsAll = targetLocalSelection.includes(ALL_TAGS_VALUE);
-    const targetTags = targetLocalSelection.filter(
-      (tag) => tag !== ALL_TAGS_VALUE
-    );
-
-    const localTagsSet = new Set(localTags);
-    const targetTagsSet = new Set(targetTags);
-
-    const tagsMatch =
-      localTagsSet.size === targetTagsSet.size &&
-      [...localTagsSet].every((tag) => targetTagsSet.has(tag));
-    const allStateMatches = currentLocalRepresentsAll === targetRepresentsAll;
-
-    if (!tagsMatch || !allStateMatches) {
-      localSelection.value = [...targetLocalSelection];
+    // Only update if different to prevent watcher loops and unnecessary changes
+    if (
+      currentLocalSet.size !== targetSet.size ||
+      ![...currentLocalSet].every((tag) => targetSet.has(tag))
+    ) {
+      localSelection.value = targetSelection;
     }
   },
   { deep: true, immediate: true }
 );
-
-watch(localSelection, (newSelection, oldSelection) => {
-  if (newSelection === oldSelection) return;
-
-  const allTagsValueIncluded = newSelection.includes(ALL_TAGS_VALUE);
-  const allTagsValueWasIncluded = oldSelection
-    ? oldSelection.includes(ALL_TAGS_VALUE)
-    : false;
-  const allTagValues = props.availableTags.map((t) => t.tag);
-
-  if (allTagsValueIncluded && !allTagsValueWasIncluded) {
-    localSelection.value = [ALL_TAGS_VALUE, ...allTagValues];
-  } else if (!allTagsValueIncluded && allTagsValueWasIncluded) {
-    localSelection.value = [];
-  } else if (
-    allTagsValueIncluded &&
-    oldSelection &&
-    newSelection.length < oldSelection.length &&
-    newSelection.length < allTagValues.length + 1
-  ) {
-    localSelection.value = newSelection.filter((v) => v !== ALL_TAGS_VALUE);
-  } else if (
-    !allTagsValueIncluded &&
-    newSelection.length === allTagValues.length &&
-    allTagValues.length > 0 &&
-    !allTagsValueWasIncluded
-  ) {
-    localSelection.value = [ALL_TAGS_VALUE, ...newSelection];
-  }
-});
 </script>
 
 <template>
@@ -157,6 +133,8 @@ watch(localSelection, (newSelection, oldSelection) => {
     <!-- Trigger button -->
     <template #trigger>
       <button
+        type="button"
+        :disabled="disabled"
         :class="[
           'inline-flex items-center gap-1 px-3 py-2 border border-gray-300 shadow-xs text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none',
           isFilterActive
@@ -175,10 +153,12 @@ watch(localSelection, (newSelection, oldSelection) => {
         v-model:value="localSelection"
         class="flex flex-col gap-2"
       >
-        <!-- Updated Checkbox for All Tags -->
-        <NCheckbox :value="ALL_TAGS_VALUE"
+        <!-- Updated Checkbox for All Tags - now separate and uses isAllTagsSelected -->
+        <NCheckbox v-model:checked="isAllTagsSelected"
           >All Tags ({{ totalCount }})</NCheckbox
         >
+        <hr class="my-1" />
+        <!-- Optional: adds a visual separator -->
         <!-- Updated loop for availableTags to use sorted list -->
         <NCheckbox v-for="t in sortedAvailableTags" :key="t.tag" :value="t.tag">
           {{ formatTagForDisplay(t.tag) }} ({{ t.post_count ?? 0 }})

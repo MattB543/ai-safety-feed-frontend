@@ -18,6 +18,7 @@ import { NTooltip, NButton } from "naive-ui";
 import { formatDate, formatTagForDisplay } from "../utils/formatters";
 import MarkdownIt from "markdown-it";
 import IconSparklesCustom from "./icons/IconSparklesCustom.vue";
+import DOMPurify from "dompurify";
 
 // --- Props ---
 const props = defineProps({
@@ -34,7 +35,7 @@ const props = defineProps({
     default: false,
   },
 });
-const emit = defineEmits(["view-article", "toggle-bookmark"]);
+const emit = defineEmits(["toggle-bookmark"]);
 
 // --- State ---
 const isParagraphSummaryExpanded = ref(false);
@@ -58,7 +59,8 @@ const formattedParagraphSummary = computed(() => {
     return "";
   }
   // Render the paragraph_summary (assumed to be Markdown) to HTML
-  return md.render(props.article.paragraph_summary);
+  const rawHtml = md.render(props.article.paragraph_summary);
+  return DOMPurify.sanitize(rawHtml);
 });
 
 const formattedNoveltyNote = computed(() => {
@@ -66,11 +68,12 @@ const formattedNoveltyNote = computed(() => {
     return "";
   }
   // Replace "ID <number>" with a link to the article
-  return props.article.novelty_note.replace(
+  const linkedHtml = props.article.novelty_note.replace(
     /ID (\d+)/g,
     (match, id) =>
-      `<a href="#article-${id}" class="text-blue-600 hover:underline">here</a>` // Keep ID for clarity
+      `<a href="#post-${id}" class="text-blue-600 hover:underline">ID ${id}</a>` // Keep ID for clarity
   );
+  return DOMPurify.sanitize(linkedHtml);
 });
 
 const ClusterIcon = computed(
@@ -81,8 +84,8 @@ const ClusterIcon = computed(
 const noveltyRating = computed(() => {
   const score = props.article.novelty_score;
   if (score == null || score < 0) return 0; // Handle null/negative scores
-  if (score >= 81) return 5; // Bucket 5: 81-100
-  if (score >= 71) return 4; // Bucket 4: 71-80
+  if (score >= 91) return 5; // Bucket 5: 91-100
+  if (score >= 71) return 4; // Bucket 4: 71-90
   if (score >= 41) return 3; // Bucket 3: 41-70
   if (score >= 21) return 2; // Bucket 2: 21-40
   return 1; // Bucket 1: 0-20
@@ -136,28 +139,27 @@ function toggleKeyImplication() {
 function toggleNovelty() {
   isNoveltyExpanded.value = !isNoveltyExpanded.value;
 }
+
+// --- Utility Functions ---
+function slugify(text) {
+  if (!text) return "no-title";
+  return text
+    .toString()
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, "-") // Replace spaces with -
+    .replace(/[^\w\-]+/g, "") // Remove all non-word chars
+    .replace(/\-\-+/g, "-") // Replace multiple - with single -
+    .replace(/^-+/, "") // Trim - from start of text
+    .replace(/-+$/, ""); // Trim - from end of text
+}
 </script>
 
 <template>
   <article class="bg-white px-6" :id="`post-${article.id}`">
-    <!-- Top Section: Image on Left, Info on Right -->
-    <div class="flex flex-col md:flex-row gap-4 mb-4">
-      <div v-if="article.image_url" class="md:w-1/4 flex-shrink-0 max-w-sm">
-        <a
-          :href="article.source_url"
-          target="_blank"
-          rel="noopener noreferrer"
-          :title="'Open ' + (article.source_type || 'link') + ' in new tab'"
-          class="block aspect-[3/2]"
-        >
-          <img
-            :src="article.image_url"
-            alt=""
-            class="w-full h-full object-cover rounded-md hover:opacity-80 transition-opacity"
-          />
-        </a>
-      </div>
-
+    <!-- Top Section: Info on Left, Image on Right -->
+    <div class="flex flex-col md:flex-row md:items-start gap-4 mb-4">
+      <!-- Text Content Div (Now first for layout) -->
       <div class="flex-grow text-left">
         <div class="flex justify-between items-start mb-2">
           <h2 class="text-2xl font-bold text-gray-900 mr-4">
@@ -204,20 +206,32 @@ function toggleNovelty() {
           </li>
         </ul>
 
+        <!-- Sentence Summary -->
+        <p
+          v-if="article.sentence_summary"
+          class="text-gray-700 mt-4 bg-gray-100 px-3 py-2 rounded-md"
+        >
+          {{ article.sentence_summary }}
+        </p>
+
         <!-- Row 2 – topics -->
         <!-- Removed the separate div for topics -->
+      </div>
+
+      <!-- Image Div (Moved to be second) -->
+      <div v-if="article.image_url" class="flex-shrink-0 max-w-sm">
+        <img
+          :src="article.image_url"
+          alt=""
+          class="w-[130px] md:w-[194px] object-cover rounded-md h-[130px] md:h-[194px]"
+        />
       </div>
     </div>
 
     <!-- Bottom Section: Summary and Actions -->
     <div class="text-left">
       <!-- Sentence Summary -->
-      <p
-        v-if="article.sentence_summary"
-        class="text-gray-700 mb-3 bg-gray-100 px-3 py-2 rounded-md"
-      >
-        {{ article.sentence_summary }}
-      </p>
+      <!-- MOVED UP -->
 
       <!-- Why it Matters (Conditional) - Will be moved below -->
       <!-- Unique Aspects -->
@@ -272,9 +286,9 @@ function toggleNovelty() {
             </template>
             Novelty: {{ noveltyRating }}/5
           </n-button>
-          <a
+          <router-link
             v-if="!hideSimilarButton"
-            :href="`/similar/${article.id}`"
+            :to="`/similar/${slugify(article.title)}-${article.id}`"
             target="_blank"
             rel="noopener noreferrer"
             class="no-underline"
@@ -286,7 +300,7 @@ function toggleNovelty() {
               </template>
               Similar Posts
             </n-button>
-          </a>
+          </router-link>
           <!-- Bookmark Button -->
           <n-button
             @click="emit('toggle-bookmark', article.id)"
@@ -422,3 +436,29 @@ function toggleNovelty() {
     </div>
   </article>
 </template>
+
+<style>
+/* Add global styles here, potentially namespaced if needed */
+@keyframes highlight-fade {
+  0% {
+    color: #b8860b;
+  } /* Start Gold */
+  80% {
+    color: #b8860b;
+  } /* Hold Gold for 2 seconds (approx 66.67% of 3s) */
+  100% {
+    color: inherit;
+  } /* Fade back to original over the last 1 second */
+}
+
+/* Target the title link within the article when it's the URL hash target */
+article[id^="post-"]:target h2 a {
+  animation: highlight-fade 2s ease-out forwards; /* Apply the animation (3s total) and keep its end state */
+}
+
+/* Keep scroll margin on the article itself */
+article[id^="post-"]:target {
+  /* Add scroll margin to create space below fixed headers */
+  scroll-margin-top: 100px; /* Adjust value based on your header's height */
+}
+</style>

@@ -8,6 +8,14 @@ const props = defineProps({
     type: String,
     default: "",
   },
+  disabled: {
+    type: Boolean,
+    default: false,
+  },
+  placeholder: {
+    type: String,
+    default: "Search feed...",
+  },
 });
 const emit = defineEmits(["update:modelValue", "search"]);
 
@@ -42,9 +50,10 @@ function handleSearch() {
     <!-- Input with search icon prefix -->
     <NInput
       v-model:value="value"
-      placeholder="Search feed..."
+      :placeholder="placeholder"
       size="medium"
       clearable
+      :disabled="disabled"
       @keyup.enter="handleSearch"
       class="flex-grow"
       :theme-overrides="inputThemeOverrides"

@@ -10,6 +10,10 @@ const props = defineProps({
     default: null,
     validator: (v) => v === null || (v >= 1 && v <= 5), // Updated validator
   },
+  disabled: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 const emit = defineEmits(["update:modelValue"]);
@@ -94,6 +98,8 @@ const marks = {
     <!-- Trigger button -->
     <template #trigger>
       <button
+        type="button"
+        :disabled="disabled"
         :class="[
           'inline-flex items-center gap-1 px-3 py-2 border border-gray-300 shadow-xs text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50',
           isFilterActive

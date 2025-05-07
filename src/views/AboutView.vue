@@ -3,7 +3,7 @@
     <article class="bg-white rounded-lg shadow-md p-6 md:p-8">
       <!-- Image Grid -->
       <div
-        class="grid grid-cols-1 sm:grid-cols-2 min-[980px]:grid-cols-3 mb-6 rounded-lg overflow-hidden"
+        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 mb-6 rounded-lg overflow-hidden"
       >
         <img
           v-for="(image, index) in selectedImages"

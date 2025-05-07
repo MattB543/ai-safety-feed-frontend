@@ -1,5 +1,5 @@
 <script setup>
-import { watch, computed, ref } from "vue";
+import { watch, computed, ref, onMounted, onUnmounted } from "vue";
 import { useArticles } from "../composables/useArticles";
 // Keep relevant component imports
 import ArticleList from "../components/ArticleList.vue";
@@ -7,9 +7,10 @@ import SearchBar from "../components/SearchBar.vue";
 import SourceFilters from "../components/SourceFilters.vue";
 import TagFilters from "../components/TagFilters.vue";
 import NoveltyFilter from "../components/NoveltyFilter.vue";
+import EmailSubscription from "../components/EmailSubscription.vue";
 // Remove SimilarDrawer import
 import { Dice as IconDice, Bookmark as IconBookmark } from "@vicons/tabler";
-import { NTooltip } from "naive-ui";
+import { NTooltip, NMessageProvider } from "naive-ui";
 
 const showIntroCard = ref(true);
 
@@ -103,7 +104,7 @@ function handleLoadMore() {
   <!-- Introductory Card -->
   <div
     v-if="showIntroCard"
-    class="relative max-w-[980px] mx-auto mb-8 p-4 pr-8 bg-gray-50 text-gray-700 rounded-md shadow-sm"
+    class="relative max-w-[980px] mx-auto mb-8 p-4 pr-8 bg-white text-gray-700 rounded-md shadow-sm"
   >
     <p class="text-sm">
       Cut through the noise with AI Safety Feed. We curate content from key
@@ -138,7 +139,7 @@ function handleLoadMore() {
 
   <!--  Search and Filters Container -->
   <div
-    class="max-w-[980px] mx-auto mb-6 flex flex-col md:flex-row md:items-start gap-4 md:gap-6"
+    class="max-w-[980px] mx-auto mb-4 flex flex-col md:flex-row md:items-start gap-4 md:gap-6"
   >
     <!--  Search Input -->
     <SearchBar
@@ -230,18 +231,26 @@ function handleLoadMore() {
     </div>
   </div>
 
-  <!-- Keep ArticleList, update event handler -->
-  <ArticleList
-    :articles="articles"
-    :isLoading="isLoading"
-    :error="error"
-    :allLoaded="allLoaded"
-    :bookmarkedIds="bookmarkedIds"
-    :isShowingBookmarks="showOnlyBookmarks"
-    @clear-filters="clearFilters"
-    @load-more="handleLoadMore"
-    @toggle-bookmark="toggleBookmark"
-  />
+  <!--  Main Article List -->
+  <div class="max-w-[980px] mx-auto">
+    <!-- Display Loading/Error/Content -->
+    <div v-if="error" class="text-center py-10 text-red-500">
+      Error: {{ error }}
+    </div>
+    <div v-else>
+      <ArticleList
+        :articles="articles"
+        :isLoading="isLoading"
+        :error="error"
+        :allLoaded="allLoaded"
+        :bookmarkedIds="bookmarkedIds"
+        :isShowingBookmarks="showOnlyBookmarks"
+        @clear-filters="clearFilters"
+        @load-more="handleLoadMore"
+        @toggle-bookmark="toggleBookmark"
+      />
+    </div>
+  </div>
 </template>
 
 <style scoped>
