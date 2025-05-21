@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import {
   World as IconWorld,
   Scale as IconScale,
@@ -42,6 +42,7 @@ const isParagraphSummaryExpanded = ref(false);
 const isKeyImplicationExpanded = ref(false);
 const isNoveltyExpanded = ref(false);
 const md = new MarkdownIt(); // Initialize markdown-it
+const currentDisplayTitle = ref(""); // For hover-to-see-original-title effect
 
 // --- Mappings ---
 const clusterIconMap = {
@@ -54,6 +55,13 @@ const clusterIconMap = {
 };
 
 // --- Computed ---
+const shouldUseCleanedTitle = computed(() => {
+  return (
+    props.article.cleaned_title &&
+    props.article.cleaned_title !== props.article.title
+  );
+});
+
 const formattedParagraphSummary = computed(() => {
   if (!props.article.paragraph_summary) {
     return "";
@@ -140,6 +148,43 @@ function toggleNovelty() {
   isNoveltyExpanded.value = !isNoveltyExpanded.value;
 }
 
+// Watch for changes in the article prop to initialize/update the display title
+watch(
+  () => props.article,
+  (newArticle) => {
+    if (newArticle) {
+      // Ensure newArticle is not undefined
+      if (
+        newArticle.cleaned_title &&
+        newArticle.cleaned_title !== newArticle.title
+      ) {
+        currentDisplayTitle.value = newArticle.cleaned_title;
+      } else {
+        currentDisplayTitle.value = newArticle.title || ""; // Fallback for undefined/null title
+      }
+    } else {
+      currentDisplayTitle.value = ""; // Handle case where article might become undefined
+    }
+  },
+  { immediate: true, deep: true }
+);
+
+function handleTitleMouseOver() {
+  if (shouldUseCleanedTitle.value) {
+    let titleToDisplay = props.article.title;
+    if (props.article.source_type) {
+      titleToDisplay += ` - ${props.article.source_type}`;
+    }
+    currentDisplayTitle.value = titleToDisplay;
+  }
+}
+
+function handleTitleMouseLeave() {
+  if (shouldUseCleanedTitle.value) {
+    currentDisplayTitle.value = props.article.cleaned_title;
+  }
+}
+
 // --- Utility Functions ---
 function slugify(text) {
   if (!text) return "no-title";
@@ -157,6 +202,17 @@ function slugify(text) {
 
 <template>
   <article class="bg-white px-6" :id="`post-${article.id}`">
+    <!-- Mobile-Only Image (Above Title) -->
+    <div
+      v-if="article.cleaned_image || article.image_url"
+      class="md:hidden mb-4 flex justify-start"
+    >
+      <img
+        :src="article.cleaned_image || article.image_url"
+        alt=""
+        class="w-[130px] object-cover rounded-md h-[130px]"
+      />
+    </div>
     <!-- Top Section: Info on Left, Image on Right -->
     <div class="flex flex-col md:flex-row md:items-start gap-4 mb-4">
       <!-- Text Content Div (Now first for layout) -->
@@ -169,8 +225,10 @@ function slugify(text) {
               rel="noopener noreferrer"
               :title="'Open ' + (article.source_type || 'link') + ' in new tab'"
               class="cursor-pointer hover:underline"
+              @mouseenter="handleTitleMouseOver"
+              @mouseleave="handleTitleMouseLeave"
             >
-              {{ article.title }}
+              {{ currentDisplayTitle }}
             </a>
           </h2>
         </div>
@@ -218,12 +276,15 @@ function slugify(text) {
         <!-- Removed the separate div for topics -->
       </div>
 
-      <!-- Image Div (Moved to be second) -->
-      <div v-if="article.image_url" class="flex-shrink-0 max-w-sm">
+      <!-- Image Div (Desktop Only - Right of Text) -->
+      <div
+        v-if="article.cleaned_image || article.image_url"
+        class="hidden md:block flex-shrink-0 max-w-sm"
+      >
         <img
-          :src="article.image_url"
+          :src="article.cleaned_image || article.image_url"
           alt=""
-          class="w-[130px] md:w-[194px] object-cover rounded-md h-[130px] md:h-[194px]"
+          class="w-[202px] object-cover rounded-md h-[202px]"
         />
       </div>
     </div>
