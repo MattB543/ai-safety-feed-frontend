@@ -1,5 +1,5 @@
 <script setup>
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, nextTick } from "vue";
 import {
   World as IconWorld,
   Scale as IconScale,
@@ -42,7 +42,9 @@ const isParagraphSummaryExpanded = ref(false);
 const isKeyImplicationExpanded = ref(false);
 const isNoveltyExpanded = ref(false);
 const md = new MarkdownIt(); // Initialize markdown-it
-const currentDisplayTitle = ref(""); // For hover-to-see-original-title effect
+
+const titleLinkRef = ref(null);
+const dynamicTooltipStyle = ref({});
 
 // --- Mappings ---
 const clusterIconMap = {
@@ -60,6 +62,23 @@ const shouldUseCleanedTitle = computed(() => {
     props.article.cleaned_title &&
     props.article.cleaned_title !== props.article.title
   );
+});
+
+const displayTitle = computed(() => {
+  if (!props.article) return "";
+  if (shouldUseCleanedTitle.value) {
+    return props.article.cleaned_title;
+  }
+  return props.article.title || "";
+});
+
+const originalTitleTooltipContent = computed(() => {
+  if (!props.article || !shouldUseCleanedTitle.value) return "";
+  let titleToDisplay = props.article.title;
+  if (props.article.source_type) {
+    titleToDisplay += ` - ${props.article.source_type}`;
+  }
+  return titleToDisplay;
 });
 
 const formattedParagraphSummary = computed(() => {
@@ -148,43 +167,6 @@ function toggleNovelty() {
   isNoveltyExpanded.value = !isNoveltyExpanded.value;
 }
 
-// Watch for changes in the article prop to initialize/update the display title
-watch(
-  () => props.article,
-  (newArticle) => {
-    if (newArticle) {
-      // Ensure newArticle is not undefined
-      if (
-        newArticle.cleaned_title &&
-        newArticle.cleaned_title !== newArticle.title
-      ) {
-        currentDisplayTitle.value = newArticle.cleaned_title;
-      } else {
-        currentDisplayTitle.value = newArticle.title || ""; // Fallback for undefined/null title
-      }
-    } else {
-      currentDisplayTitle.value = ""; // Handle case where article might become undefined
-    }
-  },
-  { immediate: true, deep: true }
-);
-
-function handleTitleMouseOver() {
-  if (shouldUseCleanedTitle.value) {
-    let titleToDisplay = props.article.title;
-    if (props.article.source_type) {
-      titleToDisplay += ` - ${props.article.source_type}`;
-    }
-    currentDisplayTitle.value = titleToDisplay;
-  }
-}
-
-function handleTitleMouseLeave() {
-  if (shouldUseCleanedTitle.value) {
-    currentDisplayTitle.value = props.article.cleaned_title;
-  }
-}
-
 // --- Utility Functions ---
 function slugify(text) {
   if (!text) return "no-title";
@@ -198,6 +180,27 @@ function slugify(text) {
     .replace(/^-+/, "") // Trim - from start of text
     .replace(/-+$/, ""); // Trim - from end of text
 }
+
+const updateTooltipStyle = () => {
+  nextTick(() => {
+    // Ensure DOM has been updated for width calculation
+    if (titleLinkRef.value) {
+      const maxWidth = titleLinkRef.value.offsetWidth;
+      dynamicTooltipStyle.value = {
+        maxWidth: maxWidth + "px",
+        textAlign: "left",
+      };
+    } else {
+      // Default or reset if the ref is not available
+      dynamicTooltipStyle.value = { textAlign: "left" };
+    }
+  });
+};
+
+// Watch for changes that might affect the title link's width or if the article itself changes
+watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
+  immediate: true,
+});
 </script>
 
 <template>
@@ -207,11 +210,19 @@ function slugify(text) {
       v-if="article.cleaned_image || article.image_url"
       class="md:hidden mb-4 flex justify-start"
     >
-      <img
-        :src="article.cleaned_image || article.image_url"
-        alt=""
-        class="w-[130px] object-cover rounded-md h-[130px]"
-      />
+      <a
+        :href="article.source_url"
+        target="_blank"
+        rel="noopener noreferrer"
+        :title="'Open ' + (article.source_type || 'link') + ' in new tab'"
+        class="cursor-pointer"
+      >
+        <img
+          :src="article.cleaned_image || article.image_url"
+          alt=""
+          class="w-[130px] object-cover rounded-md h-[130px]"
+        />
+      </a>
     </div>
     <!-- Top Section: Info on Left, Image on Right -->
     <div class="flex flex-col md:flex-row md:items-start gap-4 mb-4">
@@ -219,17 +230,33 @@ function slugify(text) {
       <div class="flex-grow text-left">
         <div class="flex justify-between items-start mb-2">
           <h2 class="text-2xl font-bold text-gray-900 mr-4">
-            <a
-              :href="article.source_url"
-              target="_blank"
-              rel="noopener noreferrer"
-              :title="'Open ' + (article.source_type || 'link') + ' in new tab'"
-              class="cursor-pointer hover:underline"
-              @mouseenter="handleTitleMouseOver"
-              @mouseleave="handleTitleMouseLeave"
+            <n-tooltip
+              trigger="hover"
+              :disabled="!shouldUseCleanedTitle"
+              placement="top-start"
+              :show-delay="0"
+              :style="dynamicTooltipStyle"
             >
-              {{ currentDisplayTitle }}
-            </a>
+              <template #trigger>
+                <a
+                  ref="titleLinkRef"
+                  :href="article.source_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  :title="
+                    !shouldUseCleanedTitle
+                      ? 'Open ' +
+                        (article.source_type || 'link') +
+                        ' in new tab'
+                      : null
+                  "
+                  class="cursor-pointer hover:underline"
+                >
+                  {{ displayTitle }}
+                </a>
+              </template>
+              {{ originalTitleTooltipContent }}
+            </n-tooltip>
           </h2>
         </div>
 
@@ -281,11 +308,19 @@ function slugify(text) {
         v-if="article.cleaned_image || article.image_url"
         class="hidden md:block flex-shrink-0 max-w-sm"
       >
-        <img
-          :src="article.cleaned_image || article.image_url"
-          alt=""
-          class="w-[202px] object-cover rounded-md h-[202px]"
-        />
+        <a
+          :href="article.source_url"
+          target="_blank"
+          rel="noopener noreferrer"
+          :title="'Open ' + (article.source_type || 'link') + ' in new tab'"
+          class="cursor-pointer"
+        >
+          <img
+            :src="article.cleaned_image || article.image_url"
+            alt=""
+            class="w-[202px] object-cover rounded-md h-[202px]"
+          />
+        </a>
       </div>
     </div>
 

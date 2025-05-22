@@ -24,74 +24,32 @@
 
     <!-- Section 2: Similar Articles -->
     <div>
-      <div
-        class="flex justify-between items-center mb-6 border-b pb-2 border-gray-300"
-      >
+      <div class="mb-6 border-b pb-2 border-gray-300">
         <h2 class="text-2xl font-semibold text-gray-700">Similar Posts</h2>
-
-        <!-- Right-aligned section: Helper text + Button -->
-        <div class="flex items-center gap-3">
-          <!-- Helper text during AI ranking -->
-          <span
-            v-if="
-              !isLoadingInitialSimilar && isLoadingAiRanked && !showingAiResults
-            "
-            class="text-sm text-gray-500 italic"
-          >
-            Showing quick results (vector-based), having AI refine the list...
-          </span>
-
-          <!-- Toggle Results Button -->
-          <n-button
-            v-if="!isLoadingInitialSimilar"
-            @click="toggleResultsView"
-            :type="showingAiResults ? 'default' : 'primary'"
-            size="small"
-            :loading="isLoadingAiRanked"
-            :disabled="isToggleButtonDisabled"
-            :title="toggleButtonTitle"
-          >
-            <template #icon>
-              <n-icon
-                :component="
-                  showingAiResults ? IconArrowBack : IconSparklesCustom
-                "
-              />
-            </template>
-            {{ toggleButtonText }}
-          </n-button>
-        </div>
       </div>
 
-      <!-- Loading State for Initial Vector Results -->
-      <div v-if="isLoadingInitialSimilar" class="text-center py-10">
+      <!-- Loading State for Similar Articles -->
+      <div v-if="isLoadingSimilar" class="text-center py-10">
         <n-spin size="large" />
         <p class="text-gray-600 mt-2">Loading Similar Articles...</p>
       </div>
-      <!-- Error State for Initial Vector Results -->
+      <!-- Error State for Similar Articles -->
       <div
-        v-else-if="errorInitialSimilar"
+        v-else-if="errorSimilar"
         class="text-red-600 bg-red-100 p-4 rounded mb-4"
       >
-        {{ errorInitialSimilar }}
-      </div>
-      <!-- Error State for AI Ranking (shown below initial results if they loaded) -->
-      <div
-        v-if="errorAiRanked && !isLoadingInitialSimilar"
-        class="text-orange-600 bg-orange-100 p-3 rounded mb-4 text-sm"
-      >
-        Could not load AI-ranked results: {{ errorAiRanked }}
+        {{ errorSimilar }}
       </div>
 
       <!-- Display List -->
       <div
-        v-else-if="displayedArticles.length === 0 && !isLoadingInitialSimilar"
+        v-else-if="similarArticles.length === 0 && !isLoadingSimilar"
         class="text-gray-600 text-center py-6"
       >
         No similar posts found.
       </div>
       <ul v-else class="bg-white rounded-lg shadow-md divide-y divide-gray-200">
-        <li v-for="similar in displayedArticles" :key="similar.id" class="p-6">
+        <li v-for="similar in similarArticles" :key="similar.id" class="p-6">
           <ArticleCard
             :article="similar"
             :hide-similar-button="true"
@@ -109,9 +67,7 @@ import { ref, onMounted, watch, computed } from "vue";
 import { useHead } from "@vueuse/head"; // Import useHead
 import { useRoute } from "vue-router"; // <-- Import useRoute
 import ArticleCard from "../components/ArticleCard.vue";
-import { NSpin, NButton, NIcon } from "naive-ui";
-import IconSparklesCustom from "../components/icons/IconSparklesCustom.vue"; // Import the sparkles icon
-import IconArrowBack from "../components/icons/IconArrowBack.vue"; // Import an arrow icon
+import { NSpin } from "naive-ui";
 import { useArticles } from "../composables/useArticles"; // Import useArticles
 
 // Define API_BASE_URL from environment variables
@@ -122,7 +78,6 @@ const route = useRoute();
 
 // State for the parsed ID
 const articleId = ref(null);
-const originalSlug = ref(""); // Optional: store the slug too
 
 // --- Get bookmark state from useArticles ---
 const { bookmarkedIds, toggleBookmark } = useArticles();
@@ -132,63 +87,10 @@ const originalArticle = ref(null);
 const isLoadingOriginal = ref(false);
 const errorOriginal = ref(null);
 
-// State for Initial (Vector) Similar Articles
-const initialSimilarArticles = ref([]);
-const isLoadingInitialSimilar = ref(false);
-const errorInitialSimilar = ref(null);
-
-// State for AI-Ranked Similar Articles
-const aiRankedSimilarArticles = ref([]);
-const isLoadingAiRanked = ref(false);
-const errorAiRanked = ref(null);
-const aiResultsAvailable = ref(false); // Flag to indicate AI results are fetched (successfully or with error)
-
-// State for UI Control
-const showingAiResults = ref(false); // Are we currently displaying AI results?
-
-// --- Computed Properties ---
-
-// Determine which list to display
-const displayedArticles = computed(() => {
-  return showingAiResults.value
-    ? aiRankedSimilarArticles.value
-    : initialSimilarArticles.value;
-});
-
-// Computed property for the toggle button text
-const toggleButtonText = computed(() => {
-  return showingAiResults.value ? "View Vector Ranking" : "View AI Ranking";
-});
-
-// Computed property for the toggle button title attribute
-const toggleButtonTitle = computed(() => {
-  if (isLoadingAiRanked.value) {
-    return "AI ranking in progress...";
-  }
-  if (!showingAiResults.value && errorAiRanked.value) {
-    return "Cannot view AI ranking due to an error.";
-  }
-  return showingAiResults.value
-    ? "Switch back to initial vector-based results"
-    : "Switch to AI-ranked results";
-});
-
-// Computed property for the toggle button disabled state
-const isToggleButtonDisabled = computed(() => {
-  // Disable while AI is loading
-  if (isLoadingAiRanked.value) {
-    return true;
-  }
-  // Disable switching TO AI results if there was an error
-  if (!showingAiResults.value && errorAiRanked.value) {
-    return true;
-  }
-  // Disable switching TO AI results if they are available but empty (optional, depends on desired UX)
-  // if (!showingAiResults.value && aiResultsAvailable.value && aiRankedSimilarArticles.value.length === 0) {
-  //   return true;
-  // }
-  return false;
-});
+// State for Similar Articles
+const similarArticles = ref([]);
+const isLoadingSimilar = ref(false);
+const errorSimilar = ref(null);
 
 // --- Fetching Functions ---
 
@@ -218,46 +120,15 @@ async function fetchOriginalArticle(idToFetch) {
   }
 }
 
-// Fetch initial vector-based similar articles
-async function fetchVectorSimilar(idToFetch) {
+// Fetch AI-ranked similar articles
+async function fetchSimilarArticles(idToFetch) {
   // <-- Use passed ID
-  isLoadingInitialSimilar.value = true;
-  errorInitialSimilar.value = null;
-  initialSimilarArticles.value = []; // Clear previous results
-  showingAiResults.value = false; // Reset view state
+  isLoadingSimilar.value = true;
+  errorSimilar.value = null;
+  similarArticles.value = []; // Clear previous results
   if (!idToFetch) {
-    errorInitialSimilar.value = "Article ID is missing for similar search.";
-    isLoadingInitialSimilar.value = false;
-    return;
-  }
-  try {
-    const response = await fetch(
-      `${API_BASE_URL}/api/similar/${idToFetch}/vector?n=10` // <-- Use passed ID
-    ); // Fetch 10 vector results
-    if (!response.ok) {
-      throw new Error(
-        `HTTP error! Status: ${response.status} ${response.statusText}`
-      );
-    }
-    initialSimilarArticles.value = await response.json();
-  } catch (e) {
-    console.error("Failed to fetch vector similar articles:", e);
-    errorInitialSimilar.value = `Failed to load initial similar articles. ${e.message}`;
-  } finally {
-    isLoadingInitialSimilar.value = false;
-  }
-}
-
-// Fetch AI-ranked similar articles (runs in background)
-async function fetchAiRankedSimilar(idToFetch) {
-  // <-- Use passed ID
-  isLoadingAiRanked.value = true;
-  errorAiRanked.value = null;
-  aiRankedSimilarArticles.value = []; // Clear previous results
-  aiResultsAvailable.value = false; // Reset availability
-  if (!idToFetch) {
-    errorAiRanked.value = "Article ID is missing for AI ranking.";
-    isLoadingAiRanked.value = false;
+    errorSimilar.value = "Article ID is missing for similar search.";
+    isLoadingSimilar.value = false;
     return;
   }
   try {
@@ -270,28 +141,13 @@ async function fetchAiRankedSimilar(idToFetch) {
         `HTTP error! Status: ${response.status} ${response.statusText}. ${errorData}`
       );
     }
-    aiRankedSimilarArticles.value = await response.json();
-    aiResultsAvailable.value = true; // Mark AI results as available (even if empty)
+    similarArticles.value = await response.json();
   } catch (e) {
-    console.error("Failed to fetch AI-ranked similar articles:", e);
-    errorAiRanked.value = `AI ranking failed. ${e.message}`;
-    aiResultsAvailable.value = true; // Mark as "available" but with an error
+    console.error("Failed to fetch similar articles:", e);
+    errorSimilar.value = `Failed to load similar articles. ${e.message}`;
   } finally {
-    isLoadingAiRanked.value = false;
+    isLoadingSimilar.value = false;
   }
-}
-
-// --- Lifecycle and Watchers ---
-
-function loadAllData(articleId) {
-  // Reset head data on new load
-  // useHead({
-  //   title: "Loading Similar Posts...",
-  //   meta: [],
-  // });
-  fetchOriginalArticle(articleId); // fetchOriginalArticle will update head when done
-  fetchVectorSimilar(articleId); // Fetch vector results immediately
-  fetchAiRankedSimilar(articleId); // Start fetching AI results in parallel
 }
 
 // --- SEO Head Management ---
@@ -364,26 +220,24 @@ onMounted(() => {
       const potentialId = parseInt(idStr, 10);
       if (!isNaN(potentialId)) {
         articleId.value = potentialId;
-        originalSlug.value = slugWithId.substring(0, lastDashIndex); // Store slug
 
         // Fetch data using the parsed ID
         fetchOriginalArticle(articleId.value);
-        fetchVectorSimilar(articleId.value);
-        fetchAiRankedSimilar(articleId.value);
+        fetchSimilarArticles(articleId.value);
       } else {
         console.error("Parsed ID is not a valid number:", idStr);
         errorOriginal.value = "Invalid article ID format in URL.";
-        errorInitialSimilar.value = "Invalid article ID format in URL.";
+        errorSimilar.value = "Invalid article ID format in URL.";
       }
     } else {
       console.error("Could not find '-' separator in slugWithId:", slugWithId);
       errorOriginal.value = "Invalid URL format for similar posts.";
-      errorInitialSimilar.value = "Invalid URL format for similar posts.";
+      errorSimilar.value = "Invalid URL format for similar posts.";
     }
   } else {
     console.error("slugWithId param is missing or not a string:", slugWithId);
     errorOriginal.value = "Missing article identifier in URL.";
-    errorInitialSimilar.value = "Missing article identifier in URL.";
+    errorSimilar.value = "Missing article identifier in URL.";
   }
 });
 
@@ -398,31 +252,31 @@ watch(
         const potentialId = parseInt(idStr, 10);
         if (!isNaN(potentialId)) {
           articleId.value = potentialId;
-          originalSlug.value = newSlugWithId.substring(0, lastDashIndex);
           fetchOriginalArticle(articleId.value);
-          fetchVectorSimilar(articleId.value);
-          fetchAiRankedSimilar(articleId.value);
+          fetchSimilarArticles(articleId.value);
         } else {
-          /* handle error */
+          console.error("Parsed ID is not a valid number:", idStr);
+          errorOriginal.value = "Invalid article ID format in URL.";
+          errorSimilar.value = "Invalid article ID format in URL.";
         }
       } else {
-        /* handle error */
+        console.error(
+          "Could not find '-' separator in slugWithId:",
+          newSlugWithId
+        );
+        errorOriginal.value = "Invalid URL format for similar posts.";
+        errorSimilar.value = "Invalid URL format for similar posts.";
       }
     } else {
-      /* handle error */
+      console.error(
+        "slugWithId param is missing or not a string:",
+        newSlugWithId
+      );
+      errorOriginal.value = "Missing article identifier in URL.";
+      errorSimilar.value = "Missing article identifier in URL.";
     }
   }
 );
-
-// --- UI Actions ---
-
-function toggleResultsView() {
-  // Prevent toggling if button is disabled (redundant check, but safe)
-  if (isToggleButtonDisabled.value) {
-    return;
-  }
-  showingAiResults.value = !showingAiResults.value;
-}
 </script>
 
 <style scoped>
