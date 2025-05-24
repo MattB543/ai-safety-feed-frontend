@@ -34,6 +34,10 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  priorityLoad: {
+    type: Boolean,
+    default: false,
+  },
 });
 const emit = defineEmits(["toggle-bookmark"]);
 
@@ -219,8 +223,10 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
       >
         <img
           :src="article.cleaned_image || article.image_url"
-          alt=""
+          :alt="article.image_prompt || ''"
+          :title="article.image_prompt || undefined"
           class="w-[130px] object-cover rounded-md h-[130px]"
+          :loading="priorityLoad ? 'eager' : 'lazy'"
         />
       </a>
     </div>
@@ -317,8 +323,10 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
         >
           <img
             :src="article.cleaned_image || article.image_url"
-            alt=""
+            :alt="article.image_prompt || ''"
+            :title="article.image_prompt || undefined"
             class="w-[202px] object-cover rounded-md h-[202px]"
+            :loading="priorityLoad ? 'eager' : 'lazy'"
           />
         </a>
       </div>
