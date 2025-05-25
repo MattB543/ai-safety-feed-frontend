@@ -392,7 +392,7 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
           </n-button>
           <router-link
             v-if="!hideSimilarButton"
-            :to="`/similar/${slugify(article.title)}-${article.id}`"
+            :to="`/similar/${slugify(displayTitle)}-${article.id}`"
             target="_blank"
             rel="noopener noreferrer"
             class="no-underline"
