@@ -3,6 +3,7 @@ import FeedView from "../views/FeedView.vue"; // We'll create this next
 import SimilarPage from "../views/SimilarPage.vue"; // We'll create this too
 import AboutView from "../views/AboutView.vue"; // Import the new view
 import DigestView from "../views/DigestView.vue"; // Import the new Digest view
+import DataView from "../views/DataView.vue"; // Import the new Data view
 
 const routes = [
   {
@@ -25,6 +26,11 @@ const routes = [
     path: "/digest", // Add the new digest route
     name: "Digest",
     component: DigestView,
+  },
+  {
+    path: "/data", // Add the new data route
+    name: "Data",
+    component: DataView,
   },
 ];
 

@@ -43,15 +43,16 @@
           Feedback
         </a>
 
-        <!-- CSV download button -->
-        <a
-          :href="`${API_BASE_URL}/api/content/export`"
-          class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200"
-          aria-label="Download full CSV"
-          title="Download full CSV"
+        <!-- Data Access Link -->
+        <router-link
+          to="/data"
+          class="inline-flex items-center px-3 py-2 border border-transparent text-sm leading-4 font-medium rounded-md text-gray-700 bg-gray-100 hover:bg-gray-200 gap-1"
+          aria-label="Access data and API"
+          title="Access data and API"
         >
           <Download class="h-4 w-4" stroke-width="2" />
-        </a>
+          Data
+        </router-link>
 
         <!-- Discord Icon -->
         <a
