@@ -87,7 +87,7 @@
               detailed endpoint descriptions:
             </p>
             <a
-              href="https://ai-safety-feed-backend.onrender.com/api/docs"
+              href="https://ai-safety-feed-backend.onrender.com/api-docs/"
               target="_blank"
               class="inline-flex items-center px-6 py-3 border border-transparent text-base font-medium rounded-md text-white bg-green-600 hover:bg-green-700 transition-colors gap-2"
               aria-label="View API Documentation"
