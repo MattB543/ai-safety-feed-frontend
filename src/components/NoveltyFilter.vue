@@ -101,17 +101,17 @@ const marks = {
         type="button"
         :disabled="disabled"
         :class="[
-          'inline-flex items-center gap-1 px-3 py-2 border border-gray-300 shadow-xs text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50',
+          'btn-secondary',
           isFilterActive
-            ? 'outline outline-2 outline-blue-500'
-            : 'outline-none',
+            ? 'ring-2 ring-accent border-transparent bg-accent-soft text-accent-ink'
+            : '',
         ]"
         aria-label="Filter by minimum novelty score"
       >
         <NIcon
           :component="IconSparklesCustom"
           class="text-lg"
-          :class="{ 'text-blue-600': isFilterActive }"
+          :class="{ 'text-accent': isFilterActive }"
         />
         {{ buttonText }}
       </button>
@@ -124,7 +124,7 @@ const marks = {
           <!-- Optional wrapper for label + slider if NSpace needs direct children -->
           <label
             for="novelty-slider"
-            class="block text-sm font-medium text-gray-700 mb-2"
+            class="block text-sm font-medium text-ink-2 mb-2"
             >Minimum Novelty Score</label
           >
           <NSlider

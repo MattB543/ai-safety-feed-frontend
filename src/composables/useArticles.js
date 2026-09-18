@@ -1,10 +1,11 @@
-import { ref, onMounted, computed, watch } from "vue";
+import { ref, onMounted, watch } from "vue";
 
 export function useArticles() {
   // --- State ---
   const articles = ref([]); // Holds the *currently displayed* articles (either normal feed or bookmarks)
   const isLoading = ref(true);
   const error = ref(null);
+  const loadMoreError = ref(null);
   const activeSources = ref([]);
   const availableSources = ref([]);
   const sourceCounts = ref({});
@@ -37,13 +38,10 @@ export function useArticles() {
         const parsedIds = JSON.parse(storedBookmarks);
         if (Array.isArray(parsedIds)) {
           bookmarkedIds.value = new Set(parsedIds);
-          console.log("Loaded bookmarks:", bookmarkedIds.value); // Debug log
         } else {
           console.warn("Invalid bookmark data found in localStorage.");
           localStorage.removeItem(BOOKMARK_STORAGE_KEY);
         }
-      } else {
-        console.log("No bookmarks found in localStorage."); // Debug log
       }
     } catch (e) {
       console.error("Failed to load bookmarks from localStorage:", e);
@@ -54,7 +52,6 @@ export function useArticles() {
     try {
       const idsToSave = Array.from(bookmarkedIds.value);
       localStorage.setItem(BOOKMARK_STORAGE_KEY, JSON.stringify(idsToSave));
-      console.log("Saved bookmarks:", idsToSave); // Debug log
     } catch (e) {
       console.error("Failed to save bookmarks to localStorage:", e);
     }
@@ -153,9 +150,10 @@ export function useArticles() {
 
   // --- Fetch Normal Articles (Paginated/Filtered) ---
   async function fetchArticles(options) {
+    loadMoreError.value = null;
+
     // If showing bookmarks, do nothing here
     if (showOnlyBookmarks.value) {
-      console.log("fetchArticles skipped: showing bookmarks.");
       return;
     }
 
@@ -172,8 +170,6 @@ export function useArticles() {
       offset.value = 0;
       allLoaded.value = false;
     }
-
-    console.log("Fetching NORMAL articles with options:", options);
 
     try {
       let url = `${API_BASE_URL}/api/content`;
@@ -193,8 +189,6 @@ export function useArticles() {
 
       const queryString = params.toString();
       if (queryString) url += `?${queryString}`;
-
-      console.log("Fetching articles with URL:", url);
 
       const response = await fetch(url, { signal: controller.signal });
 
@@ -219,15 +213,15 @@ export function useArticles() {
         allLoaded.value = true;
       }
     } catch (err) {
-      if (err.name === "AbortError") {
-        console.log("Fetch aborted");
-      } else {
+      if (err.name !== "AbortError") {
         console.error("Error fetching articles:", err);
-        error.value = `Failed to load articles: ${err.message}. Please try again later.`;
-        if (!options.append) {
+        if (options.append) {
+          // Keep the articles already on screen; surface a retryable message.
+          loadMoreError.value = "Could not load more posts.";
+        } else {
+          error.value = `Failed to load articles: ${err.message}. Please try again later.`;
           articles.value = [];
         }
-        allLoaded.value = true; // Stop infinite scroll on error
       }
     } finally {
       if (abortController.value === controller) {
@@ -239,15 +233,15 @@ export function useArticles() {
 
   // --- Fetch Bookmarked Articles (Specific IDs) ---
   async function fetchBookmarkedArticles() {
+    loadMoreError.value = null; // a failed append belongs to the normal feed
+    loadMoreError.value = null; // a failed append belongs to the normal feed
     const idsToFetch = Array.from(bookmarkedIds.value);
-    console.log("Fetching bookmarked articles for IDs:", idsToFetch);
 
     if (idsToFetch.length === 0) {
       articles.value = [];
       allLoaded.value = true; // Nothing to load
       isLoading.value = false;
       error.value = null;
-      console.log("No bookmarked IDs to fetch.");
       return;
     }
 
@@ -269,8 +263,6 @@ export function useArticles() {
       // OR if modifying existing endpoint:
       // const url = `${API_BASE_URL}/api/content?${params.toString()}`;
 
-      console.log("Fetching bookmarked articles with URL:", url);
-
       const response = await fetch(url, { signal: controller.signal });
 
       if (!response.ok) {
@@ -282,9 +274,7 @@ export function useArticles() {
       allLoaded.value = true; // We fetched all requested bookmarks, no more pages
       offset.value = bookmarkedArticles.length; // Update offset just in case
     } catch (err) {
-      if (err.name === "AbortError") {
-        console.log("Bookmark fetch aborted");
-      } else {
+      if (err.name !== "AbortError") {
         console.error("Error fetching bookmarked articles:", err);
         error.value = `Failed to load bookmarked articles: ${err.message}.`;
         articles.value = []; // Clear articles on error
@@ -343,7 +333,6 @@ export function useArticles() {
       if (isInitializing.value) return;
       // *** IMPORTANT: Only trigger fetch if NOT showing bookmarks ***
       if (!showOnlyBookmarks.value) {
-        console.log("Standard filters changed, fetching normal articles.");
         fetchArticles({
           append: false, // Reset list
           query: queryTerm.value,
@@ -353,10 +342,6 @@ export function useArticles() {
           novelty: minNovelty.value,
         });
         fetchSourceStats(); // Update source counts based on new filters
-      } else {
-        console.log(
-          "Standard filters changed, but skipping fetch because bookmarks are shown."
-        );
       }
     },
     { deep: true }
@@ -365,7 +350,6 @@ export function useArticles() {
   // Watcher for the bookmark toggle
   watch(showOnlyBookmarks, (isShowing) => {
     if (isInitializing.value) return;
-    console.log("Bookmark toggle changed to:", isShowing);
     if (isShowing) {
       // Fetch only bookmarked articles
       fetchBookmarkedArticles();
@@ -420,11 +404,9 @@ export function useArticles() {
   // Fetch Random Order - Should only apply to the normal feed
   async function fetchRandomOrder() {
     if (showOnlyBookmarks.value) {
-      console.log("Random order skipped: showing bookmarks.");
       // Maybe show a notification to the user?
       return;
     }
-    console.log("Requesting random order...");
     await fetchArticles({
       append: false,
       query: queryTerm.value,
@@ -438,7 +420,6 @@ export function useArticles() {
   // Load More Articles - Only for the normal feed
   function loadMore() {
     if (!isLoading.value && !allLoaded.value && !showOnlyBookmarks.value) {
-      console.log("Loading more articles...");
       fetchArticles({
         append: true, // Append results
         query: queryTerm.value,
@@ -446,12 +427,6 @@ export function useArticles() {
         sources: activeSources.value,
         tags: activeTags.value,
         novelty: minNovelty.value,
-      });
-    } else {
-      console.log("Load more skipped. Conditions:", {
-        isLoading: isLoading.value,
-        allLoaded: allLoaded.value,
-        showOnlyBookmarks: showOnlyBookmarks.value,
       });
     }
   }
@@ -466,6 +441,7 @@ export function useArticles() {
     articles, // Directly use this ref now
     isLoading,
     error,
+    loadMoreError,
     fetchArticles, // Expose if needed for manual refresh?
     availableSources, // Still needed for filter component display
     activeSources,

@@ -1,13 +1,15 @@
 <template>
-  <div class="bg-white shadow-md rounded-lg p-6 md:p-8 max-w-[980px] mx-auto">
+  <div
+    class="bg-surface border border-line shadow-card rounded-lg p-6 md:p-8 max-w-[980px] mx-auto"
+  >
     <!-- Loading/Error state for filter options -->
     <div v-if="isLoadingFilters" class="text-center py-6">
       <n-spin size="medium" />
-      <p class="text-sm text-gray-500 mt-2">Loading filter options...</p>
+      <p class="text-sm text-ink-3 mt-2">Loading filter options...</p>
     </div>
     <div
       v-else-if="apiError && !isLoadingFilters"
-      class="text-center py-6 text-red-600"
+      class="rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-center text-sm text-danger"
     >
       Error loading filter options: {{ apiError }}
     </div>
@@ -16,7 +18,7 @@
     <NForm v-else @submit.prevent="handleSubscribe" class="space-y-4">
       <!-- Digest Settings Section -->
       <div>
-        <h3 class="text-lg font-medium text-gray-700 mb-8">Digest settings</h3>
+        <h3 class="text-lg font-semibold text-ink mb-8">Digest settings</h3>
 
         <!-- Frequency Selector (Button + Popover) -->
         <NFormItem label="Frequency" required>
@@ -26,16 +28,10 @@
             :style="{ width: '150px' }"
           >
             <template #trigger>
-              <button
-                type="button"
-                :disabled="isLoading"
-                :class="[
-                  'inline-flex items-center gap-1 px-3 py-2 border border-gray-300 shadow-xs text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50',
-                ]"
-              >
+              <button type="button" :disabled="isLoading" class="btn-secondary">
                 {{ frequency === "daily" ? "Daily" : "Weekly" }}
                 <svg
-                  class="h-4 w-4 text-gray-500"
+                  class="h-4 w-4 text-ink-3"
                   xmlns="http://www.w3.org/2000/svg"
                   width="1em"
                   height="1em"
@@ -77,14 +73,14 @@
               @update-sources="handleUpdateSources"
               :disabled="isLoading"
             />
-            <p v-if="!isLoadingFilters" class="text-xs text-gray-500 mt-2">
+            <p v-if="!isLoadingFilters" class="text-xs text-ink-3 mt-2">
               {{ sourceSelectionHint }}
             </p>
           </div>
         </NFormItem>
 
         <!-- Tag Filters Button -->
-        <NFormItem label="Tags">
+        <NFormItem label="Categories">
           <div class="flex flex-col items-start">
             <TagFilters
               :available-tags="availableTagsData"
@@ -92,18 +88,11 @@
               @update-tags="handleUpdateTags"
               :disabled="isLoading"
             />
-            <p v-if="!isLoadingFilters" class="text-xs text-gray-500 mt-2">
+            <p v-if="!isLoadingFilters" class="text-xs text-ink-3 mt-2">
               {{ tagSelectionHint }}
             </p>
           </div>
         </NFormItem>
-
-        <!-- Novelty Filter Button -->
-        <!--
-        <NFormItem label="Minimum Novelty">
-          <NoveltyFilter v-model="localMinNovelty" :disabled="isLoading" />
-        </NFormItem>
-         -->
       </div>
 
       <!-- Email Input & Subscribe Button Row -->
@@ -149,13 +138,11 @@ import {
   NSpace,
   useMessage,
   NSpin,
-  NSelect,
   NPopover,
 } from "naive-ui";
 // Import the filter components
 import SourceFilters from "./SourceFilters.vue";
 import TagFilters from "./TagFilters.vue";
-// import NoveltyFilter from "./NoveltyFilter.vue";
 
 const message = useMessage();
 const API_BASE_URL =
@@ -177,7 +164,6 @@ const frequencyOptions = [
 // --- Local State for Selected Filters ---
 const localActiveSources = ref<string[]>([]);
 const localActiveTags = ref<string[]>([]);
-const localMinNovelty = ref<number | null>(null);
 
 // --- State for Available Filter Options ---
 const availableSourcesData = ref<string[]>([]);
@@ -253,19 +239,11 @@ const tagSelectionHint = computed(() => {
   const totalAvailable = availableTagsData.value.length;
   const selectedCount = localActiveTags.value.length;
 
-  if (selectedCount === 0) return "No tags selected";
+  if (selectedCount === 0) return "No categories selected";
   if (totalAvailable > 0 && selectedCount === totalAvailable)
-    return "All tags selected";
+    return "All categories selected";
   // Show all selected tags
   return `Selected: ${localActiveTags.value.join(", ")}`;
-});
-
-const noveltySelectionHint = computed(() => {
-  if (isLoadingFilters.value) return ""; // Don't show hint while loading options
-  if (localMinNovelty.value === null) {
-    return "Any novelty accepted";
-  }
-  return `Minimum novelty: ${localMinNovelty.value}`;
 });
 
 // --- Package Filters for API ---
@@ -274,7 +252,6 @@ const filtersForApi = computed(() => ({
   searchTerm: null, // No search term input in this form
   sources: localActiveSources.value,
   tags: localActiveTags.value,
-  // novelty: localMinNovelty.value, // Directly use the 1-5 value (or null)
 }));
 
 // --- Implement handleSubscribe ---
@@ -286,7 +263,6 @@ const handleSubscribe = async () => {
   }
 
   isLoading.value = true;
-  console.log("Subscribing with filters:", filtersForApi.value); // Debug log
 
   try {
     const response = await fetch(`${API_BASE_URL}/api/subscribe`, {
@@ -326,27 +302,3 @@ const handleSubscribe = async () => {
   }
 };
 </script>
-
-<style scoped>
-/* Align items in the filter row baseline */
-.filter-form-item {
-  margin-bottom: 0; /* Remove default bottom margin if needed */
-}
-
-/* Make select stretch */
-.filter-form-item.flex-grow :deep(.n-base-selection) {
-  width: 100%;
-}
-
-/* Optional: Adjust alignment if needed */
-/* .filter-form-item :deep(.n-form-item-blank) {
-  display: flex;
-  align-items: center; /* Vertically align label with button */
-/* } */
-
-/* Specific alignment for NoveltyFilter if needed */
-.filter-form-item:has(> .n-popover) {
-  /* Target form item containing NoveltyFilter */
-  /* Add specific styles if default alignment isn't right */
-}
-</style>

@@ -8,14 +8,18 @@ import {
   Heart as IconHeart,
   Tag as IconTag,
   ListDetails as IconListDetails,
-  Key as IconKey,
   BuildingBank as IconBuildingBank,
   ListSearch as IconListSearch,
   Bookmark as IconBookmark,
 } from "@vicons/tabler";
 import IconBookmarkFilled from "./icons/IconBookmarkFilled.vue";
 import { NTooltip, NButton } from "naive-ui";
-import { formatDate, formatTagForDisplay } from "../utils/formatters";
+import {
+  formatDate,
+  formatRelativeDate,
+  formatTagForDisplay,
+  sourceHost,
+} from "../utils/formatters";
 import MarkdownIt from "markdown-it";
 import IconSparklesCustom from "./icons/IconSparklesCustom.vue";
 import DOMPurify from "dompurify";
@@ -43,7 +47,6 @@ const emit = defineEmits(["toggle-bookmark"]);
 
 // --- State ---
 const isParagraphSummaryExpanded = ref(false);
-const isKeyImplicationExpanded = ref(false);
 const isNoveltyExpanded = ref(false);
 const md = new MarkdownIt(); // Initialize markdown-it
 
@@ -51,6 +54,11 @@ const titleLinkRef = ref(null);
 const dynamicTooltipStyle = ref({});
 
 // --- Mappings ---
+// Less Wrong, EA Forum and Alignment Forum store a real per-post username in
+// 'authors'. Every other source repeats the source name or its domain there,
+// so the name is only worth surfacing for the forums.
+const FORUM_SOURCES = new Set(["Less Wrong", "EA Forum", "Alignment Forum"]);
+
 const clusterIconMap = {
   "Forecasting & World Modeling": IconWorld,
   "AI Governance & Policy": IconScale,
@@ -85,6 +93,18 @@ const originalTitleTooltipContent = computed(() => {
   return titleToDisplay;
 });
 
+const isForumSource = computed(() =>
+  FORUM_SOURCES.has(props.article.source_type)
+);
+
+const host = computed(() => sourceHost(props.article.source_url));
+
+const faviconUrl = computed(() =>
+  host.value
+    ? `https://www.google.com/s2/favicons?domain=${host.value}&sz=32`
+    : ""
+);
+
 const formattedParagraphSummary = computed(() => {
   if (!props.article.paragraph_summary) {
     return "";
@@ -102,7 +122,7 @@ const formattedNoveltyNote = computed(() => {
   const linkedHtml = props.article.novelty_note.replace(
     /ID (\d+)/g,
     (match, id) =>
-      `<a href="#post-${id}" class="text-blue-600 hover:underline">ID ${id}</a>` // Keep ID for clarity
+      `<a href="#post-${id}" class="text-accent hover:underline">ID ${id}</a>` // Keep ID for clarity
   );
   return DOMPurify.sanitize(linkedHtml);
 });
@@ -163,10 +183,6 @@ function toggleParagraphSummary() {
   isParagraphSummaryExpanded.value = !isParagraphSummaryExpanded.value;
 }
 
-function toggleKeyImplication() {
-  isKeyImplicationExpanded.value = !isKeyImplicationExpanded.value;
-}
-
 function toggleNovelty() {
   isNoveltyExpanded.value = !isNoveltyExpanded.value;
 }
@@ -179,11 +195,32 @@ function slugify(text) {
     .toLowerCase()
     .trim()
     .replace(/\s+/g, "-") // Replace spaces with -
-    .replace(/[^\w\-]+/g, "") // Remove all non-word chars
-    .replace(/\-\-+/g, "-") // Replace multiple - with single -
+    .replace(/[^\w-]+/g, "") // Remove all non-word chars
+    .replace(/--+/g, "-") // Replace multiple - with single -
     .replace(/^-+/, "") // Trim - from start of text
     .replace(/-+$/, ""); // Trim - from end of text
 }
+
+// --- Image prompt ---
+// `image_prompt` is the exact text sent to the image model: an instruction
+// line, the metaphor, then boilerplate that is identical for every article
+// ("Composition rules" now, "Required Style" on rows generated before that).
+// Only the metaphor is worth showing on hover, so strip the rest.
+const imageMetaphor = computed(() => {
+  const text = (props.article.image_prompt || "").trim();
+  if (!text) return "";
+  const lines = text
+    .split(/\n\s*(?:Composition rules|Required Style)/i)[0]
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
+  // Older rows spell the two steps out as "Concept: ... / Metaphor: ...";
+  // only the metaphor is worth showing.
+  const labelled = lines.find((line) => /^metaphor\s*:/i.test(line));
+  if (labelled) return labelled.replace(/^metaphor\s*:\s*/i, "");
+  // Otherwise the first line is the instruction and the rest is the metaphor.
+  return lines.slice(1).join(" ") || lines[0] || "";
+});
 
 const updateTooltipStyle = () => {
   nextTick(() => {
@@ -208,162 +245,174 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
 </script>
 
 <template>
-  <article class="bg-white px-6" :id="`post-${article.id}`">
-    <!-- Mobile-Only Image (Above Title) -->
-    <div
-      v-if="article.cleaned_image || article.image_url"
-      class="md:hidden mb-4 flex justify-start"
+  <article :id="`post-${article.id}`">
+    <!-- Mobile-only image, above the title -->
+    <n-tooltip
+      trigger="hover"
+      placement="bottom-start"
+      :disabled="!imageMetaphor"
+      :show-delay="300"
     >
-      <a
-        :href="article.source_url"
-        target="_blank"
-        rel="noopener noreferrer"
-        :title="'Open ' + (article.source_type || 'link') + ' in new tab'"
-        class="cursor-pointer"
-      >
-        <img
-          :src="article.cleaned_image || article.image_url"
-          :alt="article.image_prompt || ''"
-          :title="article.image_prompt || undefined"
-          class="w-[130px] object-cover rounded-md h-[130px]"
-          :loading="priorityLoad ? 'eager' : 'lazy'"
-        />
-      </a>
-    </div>
-    <!-- Top Section: Info on Left, Image on Right -->
-    <div class="flex flex-col md:flex-row md:items-start gap-4 mb-4">
-      <!-- Text Content Div (Now first for layout) -->
-      <div class="flex-grow text-left">
-        <div class="flex justify-between items-start mb-2">
-          <h2 class="text-2xl font-bold text-gray-900 mr-4">
-            <n-tooltip
-              trigger="hover"
-              :disabled="!shouldUseCleanedTitle"
-              placement="top-start"
-              :show-delay="0"
-              :style="dynamicTooltipStyle"
-            >
-              <template #trigger>
-                <a
-                  ref="titleLinkRef"
-                  :href="article.source_url"
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  :title="
-                    !shouldUseCleanedTitle
-                      ? 'Open ' +
-                        (article.source_type || 'link') +
-                        ' in new tab'
-                      : null
-                  "
-                  class="cursor-pointer hover:underline"
-                >
-                  {{ displayTitle }}
-                </a>
-              </template>
-              {{ originalTitleTooltipContent }}
-            </n-tooltip>
-          </h2>
-        </div>
-
-        <!-- Metadata: Cluster Tag & Topics -->
-        <ul
-          class="flex flex-wrap items-center gap-x-2 gap-y-2 text-sm text-gray-500 mb-2 mt-4"
+      <template #trigger>
+        <a
+          v-if="article.cleaned_image || article.image_url"
+          :href="article.source_url"
+          target="_blank"
+          rel="noopener noreferrer"
+          :title="
+            imageMetaphor
+              ? null
+              : 'Open ' + (article.source_type || 'link') + ' in new tab'
+          "
+          class="md:hidden mb-3 flex h-[130px] w-[130px] items-center justify-center overflow-hidden rounded-md bg-surface-2"
         >
-          <!-- Cluster Tag -->
+          <img
+            :src="article.cleaned_image || article.image_url"
+            :alt="imageMetaphor"
+            class="w-full h-full"
+            :class="article.cleaned_image ? 'object-cover' : 'object-contain'"
+            decoding="async"
+            :loading="priorityLoad ? 'eager' : 'lazy'"
+          />
+        </a>
+      </template>
+      {{ imageMetaphor }}
+    </n-tooltip>
+
+    <div class="flex flex-col md:flex-row md:items-start gap-4 mb-4">
+      <div class="flex-grow text-left">
+        <!-- Title -->
+        <h2 class="text-xl font-semibold text-ink leading-snug text-balance">
+          <n-tooltip
+            trigger="hover"
+            :disabled="!shouldUseCleanedTitle"
+            placement="top-start"
+            :show-delay="0"
+            :style="dynamicTooltipStyle"
+          >
+            <template #trigger>
+              <a
+                ref="titleLinkRef"
+                :href="article.source_url"
+                target="_blank"
+                rel="noopener noreferrer"
+                :title="
+                  !shouldUseCleanedTitle
+                    ? 'Open ' + (article.source_type || 'link') + ' in new tab'
+                    : null
+                "
+                class="cursor-pointer transition-colors hover:text-accent"
+              >
+                {{ displayTitle }}
+              </a>
+            </template>
+            {{ originalTitleTooltipContent }}
+          </n-tooltip>
+        </h2>
+
+        <!-- Sentence summary -->
+        <p
+          v-if="article.sentence_summary"
+          class="mt-3 max-w-[66ch] text-base leading-relaxed text-ink-2"
+        >
+          {{ article.sentence_summary }}
+        </p>
+
+        <!-- Cluster + topic chips -->
+        <ul
+          v-if="article.cluster_tag || filteredTopics.length"
+          class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2"
+        >
           <li v-if="article.cluster_tag" class="inline-flex items-center">
             <span
-              class="inline-flex items-center bg-blue-100 text-blue-800 text-xs font-medium px-2 py-1 rounded-md ring-1 ring-inset ring-blue-200"
+              class="inline-flex items-center gap-1 rounded-md bg-accent-soft px-2 py-1 text-xs font-medium text-accent-ink"
             >
               <component
                 :is="ClusterIcon"
-                class="w-4 h-4 mr-1"
-                stroke-width="1"
+                class="w-4 h-4"
+                stroke-width="1.75"
               />
               {{ formatTagForDisplay(article.cluster_tag) }}
             </span>
           </li>
-          <!-- Topic Chips -->
           <li
             v-for="topic in filteredTopics.slice(0, 3)"
             :key="topic"
             class="inline-flex items-center"
           >
             <span
-              class="inline-block bg-gray-100 rounded-full px-2.5 py-1 text-xs text-gray-600 leading-tight ring-1 ring-inset ring-gray-200"
+              class="inline-block rounded-full bg-surface-2 px-2.5 py-1 text-xs leading-tight text-ink-2"
             >
               {{ formatTagForDisplay(topic) }}
             </span>
           </li>
         </ul>
-
-        <!-- Sentence Summary -->
-        <p
-          v-if="article.sentence_summary"
-          class="text-gray-700 mt-4 bg-gray-100 px-3 py-2 rounded-md"
-        >
-          {{ article.sentence_summary }}
-        </p>
-
-        <!-- Row 2 – topics -->
-        <!-- Removed the separate div for topics -->
       </div>
 
-      <!-- Image Div (Desktop Only - Right of Text) -->
-      <div
-        v-if="article.cleaned_image || article.image_url"
-        class="hidden md:block flex-shrink-0 max-w-sm"
+      <!-- Desktop-only image, right of the text -->
+      <n-tooltip
+        trigger="hover"
+        placement="left-start"
+        :disabled="!imageMetaphor"
+        :show-delay="300"
       >
-        <a
-          :href="article.source_url"
-          target="_blank"
-          rel="noopener noreferrer"
-          :title="'Open ' + (article.source_type || 'link') + ' in new tab'"
-          class="cursor-pointer"
-        >
-          <img
-            :src="article.cleaned_image || article.image_url"
-            :alt="article.image_prompt || ''"
-            :title="article.image_prompt || undefined"
-            class="w-[202px] object-cover rounded-md h-[202px]"
-            :loading="priorityLoad ? 'eager' : 'lazy'"
-          />
-        </a>
-      </div>
+        <template #trigger>
+          <a
+            v-if="article.cleaned_image || article.image_url"
+            :href="article.source_url"
+            target="_blank"
+            rel="noopener noreferrer"
+            :title="
+              imageMetaphor
+                ? null
+                : 'Open ' + (article.source_type || 'link') + ' in new tab'
+            "
+            class="hidden md:flex flex-shrink-0 h-[202px] w-[202px] items-center justify-center overflow-hidden rounded-md bg-surface-2"
+          >
+            <img
+              :src="article.cleaned_image || article.image_url"
+              :alt="imageMetaphor"
+              class="w-full h-full"
+              :class="article.cleaned_image ? 'object-cover' : 'object-contain'"
+              decoding="async"
+              :loading="priorityLoad ? 'eager' : 'lazy'"
+            />
+          </a>
+        </template>
+        {{ imageMetaphor }}
+      </n-tooltip>
     </div>
 
-    <!-- Bottom Section: Summary and Actions -->
     <div class="text-left">
-      <!-- Sentence Summary -->
-      <!-- MOVED UP -->
-
-      <!-- Why it Matters (Conditional) - Will be moved below -->
-      <!-- Unique Aspects -->
       <div v-if="article.unique_aspects" class="mb-4">
-        <span class="block text-sm text-gray-500">How it's Unique</span>
-        <div class="text-base text-gray-600">
+        <span class="block text-[13px] font-semibold text-ink-3 mb-1"
+          >How it's Unique</span
+        >
+        <div class="text-base text-ink-2">
           {{ article.unique_aspects }}
         </div>
       </div>
-      <!-- Author Credentials -->
       <div v-if="article.author_credentials" class="mb-4">
-        <span class="block text-sm text-gray-500">About the Authors</span>
-        <div class="text-base text-gray-600">
+        <span class="block text-[13px] font-semibold text-ink-3 mb-1"
+          >About the Authors</span
+        >
+        <div class="text-base text-ink-2">
           {{ article.author_credentials }}
         </div>
       </div>
 
-      <!-- Actions and Author/Date -->
+      <!-- Actions and authors -->
       <div
         class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 mt-4"
       >
-        <!-- Action Buttons (Left Side) -->
         <div class="flex items-center flex-wrap gap-2">
           <n-button
             v-if="article.paragraph_summary || article.key_implication"
             @click="toggleParagraphSummary"
             size="small"
-            :type="isParagraphSummaryExpanded ? 'info' : 'tertiary'"
+            :quaternary="!isParagraphSummaryExpanded"
+            :type="isParagraphSummaryExpanded ? 'info' : 'default'"
+            :aria-expanded="isParagraphSummaryExpanded"
             :title="
               isParagraphSummaryExpanded
                 ? 'Hide Main Points'
@@ -373,14 +422,15 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
             <template #icon>
               <IconListDetails stroke-width="2" class="w-4 h-4" />
             </template>
-            {{ isParagraphSummaryExpanded ? "Main Points" : "Main Points" }}
+            Main Points
           </n-button>
-          <!-- New Novelty Display -->
           <n-button
             v-if="article.novelty_score !== null && article.novelty_note"
             @click="toggleNovelty"
             size="small"
-            :type="isNoveltyExpanded ? 'info' : 'tertiary'"
+            :quaternary="!isNoveltyExpanded"
+            :type="isNoveltyExpanded ? 'info' : 'default'"
+            :aria-expanded="isNoveltyExpanded"
             :title="
               isNoveltyExpanded ? 'Hide Novelty Note' : 'Show Novelty Note'
             "
@@ -395,21 +445,17 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
             :to="`/similar/${slugify(displayTitle)}-${article.id}`"
             target="_blank"
             rel="noopener noreferrer"
-            class="no-underline"
+            class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-sm text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
             title="View similar posts"
           >
-            <n-button size="small" type="tertiary">
-              <template #icon>
-                <IconListSearch stroke-width="2" class="w-4 h-4" />
-              </template>
-              Similar Posts
-            </n-button>
+            <IconListSearch stroke-width="2" class="h-4 w-4" />
+            Similar Posts
           </router-link>
-          <!-- Bookmark Button -->
           <n-button
             @click="emit('toggle-bookmark', article.id)"
             size="small"
-            type="tertiary"
+            quaternary
+            :aria-pressed="isBookmarked"
             :title="isBookmarked ? 'Remove Bookmark' : 'Add Bookmark'"
           >
             <template #icon>
@@ -417,152 +463,142 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
                 :is="isBookmarked ? IconBookmarkFilled : IconBookmark"
                 stroke-width="2"
                 class="w-4 h-4"
-                :class="{ 'text-blue-600 fill-current': isBookmarked }"
+                :class="{ 'text-accent fill-current': isBookmarked }"
               />
             </template>
           </n-button>
         </div>
 
-        <ul
-          class="flex justify-start sm:justify-end flex-wrap items-center gap-x-1.5 text-sm text-gray-500 mt-2 sm:mt-0"
+        <!-- Source meta: favicon, source, forum username, date -->
+        <div
+          class="flex justify-start sm:justify-end flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-3 mt-2 sm:mt-0"
         >
-          <!-- Authors -->
-          <li
-            v-if="!article.authors || article.authors.length === 0"
-            class="inline-flex items-center"
-          >
-            <span class="text-sm text-gray-500">Unknown Author</span>
-          </li>
-          <template v-else>
-            <!-- Wrap truncated authors in NTooltip -->
+          <img
+            v-if="host"
+            :src="faviconUrl"
+            width="16"
+            height="16"
+            alt=""
+            class="rounded-sm"
+            loading="lazy"
+          />
+          <span v-if="article.source_type" class="font-medium text-ink-2">
+            {{ article.source_type }}
+          </span>
+
+          <!-- Only forums put a real per-post username in 'authors'; blogs and
+               podcasts just repeat the source name or its domain there. -->
+          <template v-if="isForumSource && article.authors?.length">
+            <span aria-hidden="true">&middot;</span>
             <n-tooltip trigger="hover" v-if="article.authors.length > 3">
               <template #trigger>
-                <span class="inline-flex items-center flex-wrap gap-x-1.5">
-                  <!-- Wrapper span for trigger area -->
-                  <li
+                <span class="inline-flex flex-wrap gap-x-1">
+                  <span
                     v-for="(author, index) in article.authors.slice(0, 3)"
                     :key="author"
-                    class="inline-flex items-center"
                   >
-                    <span class="text-sm text-gray-500">{{ author }}</span>
-                    <span
-                      v-if="
-                        index < 2 || (index === 2 && article.authors.length > 3)
-                      "
-                      class="mx-0.5"
-                      >,</span
-                    >
-                  </li>
-                  <li
-                    v-if="article.authors.length > 3"
-                    class="inline-flex items-center ml-1"
-                  >
-                    <span class="text-sm text-gray-500">Et al.</span>
-                  </li>
+                    {{ author }}<span v-if="index < 2">,</span>
+                  </span>
+                  <span>Et al.</span>
                 </span>
               </template>
               {{ fullAuthorList }}
             </n-tooltip>
-            <!-- Show full list directly if not truncated -->
-            <template v-else>
-              <li
-                v-for="(author, index) in article.authors"
-                :key="author"
-                class="inline-flex items-center"
-              >
-                <span class="text-sm text-gray-500">{{ author }}</span>
-                <span v-if="index < article.authors.length - 1" class="mx-0.5"
-                  >,</span
-                >
-              </li>
-            </template>
+            <span v-else class="inline-flex flex-wrap gap-x-1">
+              <span v-for="(author, index) in article.authors" :key="author">
+                {{ author
+                }}<span v-if="index < article.authors.length - 1">,</span>
+              </span>
+            </span>
           </template>
 
-          <!-- Separator -->
-          <li
-            v-if="
-              article.authors &&
-              article.authors.length > 0 &&
-              article.published_date
-            "
-            class="text-gray-400"
+          <span
+            v-if="article.source_type && article.published_date"
+            aria-hidden="true"
+            >&middot;</span
           >
-            •
-          </li>
-
-          <!-- Date -->
-          <li v-if="article.published_date" class="whitespace-nowrap">
-            {{ formatDate(article.published_date) }}
-          </li>
-        </ul>
-      </div>
-
-      <!-- Novelty note (Conditional) -->
-      <div
-        v-if="isNoveltyExpanded && article.novelty_note"
-        class="text-gray-700 mt-4 bg-gray-100 px-3 py-2 rounded-md mb-4"
-      >
-        <span class="block text-sm text-gray-500 font-medium mb-1">
-          Novelty ({{ noveltyRating }}/5 Score)
-        </span>
-        <div class="text-gray-700" v-html="formattedNoveltyNote"></div>
-      </div>
-
-      <!-- Paragraph Summary (Conditional) -->
-      <div
-        v-if="isParagraphSummaryExpanded"
-        class="text-gray-700 mt-4 bg-gray-100 px-3 py-2 rounded-md prose max-w-none mb-4"
-      >
-        <!-- Main Points Content -->
-        <div v-if="article.paragraph_summary" class="mb-3">
-          <span class="block text-sm text-gray-500 font-medium mb-1"
-            >Main Points</span
+          <time
+            v-if="article.published_date"
+            :datetime="article.published_date"
+            :title="formatDate(article.published_date)"
           >
-          <div class="text-gray-700" v-html="formattedParagraphSummary"></div>
+            {{ formatRelativeDate(article.published_date) }}
+          </time>
         </div>
+      </div>
 
-        <!-- Divider and Implication Content -->
+      <!-- Novelty note -->
+      <Transition name="collapse">
         <div
-          v-if="article.paragraph_summary && article.key_implication"
-          class="my-3"
+          v-if="isNoveltyExpanded && article.novelty_note"
+          class="grid [grid-template-rows:1fr]"
         >
-          <hr class="border-gray-200" />
-        </div>
-        <div v-if="article.key_implication">
-          <span class="block text-sm text-gray-500 font-medium mb-1"
-            >Implication</span
-          >
-          <div class="text-gray-700">
-            {{ article.key_implication }}
+          <div class="min-h-0 overflow-hidden">
+            <div class="mt-3 rounded-md bg-surface-2 px-4 py-3">
+              <span class="block text-[13px] font-semibold text-ink-3 mb-1">
+                Novelty ({{ noveltyRating }}/5 Score)
+              </span>
+              <div class="text-ink-2" v-html="formattedNoveltyNote"></div>
+            </div>
           </div>
         </div>
-      </div>
+      </Transition>
+
+      <!-- Main points / implication -->
+      <Transition name="collapse">
+        <div
+          v-if="isParagraphSummaryExpanded"
+          class="grid [grid-template-rows:1fr]"
+        >
+          <div class="min-h-0 overflow-hidden">
+            <div class="mt-3 rounded-md bg-surface-2 px-4 py-3">
+              <div v-if="article.paragraph_summary">
+                <span class="block text-[13px] font-semibold text-ink-3 mb-1"
+                  >Main Points</span
+                >
+                <div
+                  class="prose prose-sm max-w-none text-ink-2"
+                  v-html="formattedParagraphSummary"
+                ></div>
+              </div>
+
+              <div
+                v-if="article.key_implication"
+                :class="article.paragraph_summary ? 'mt-4' : ''"
+              >
+                <span class="block text-[13px] font-semibold text-ink-3 mb-1"
+                  >Implication</span
+                >
+                <div class="text-ink-2">
+                  {{ article.key_implication }}
+                </div>
+              </div>
+
+              <p class="mt-3 text-xs text-ink-3">AI-generated summary</p>
+            </div>
+          </div>
+        </div>
+      </Transition>
     </div>
   </article>
 </template>
 
 <style>
-/* Add global styles here, potentially namespaced if needed */
+/* Flash the card background when it is the URL hash target */
 @keyframes highlight-fade {
-  0% {
-    color: #b8860b;
-  } /* Start Gold */
-  80% {
-    color: #b8860b;
-  } /* Hold Gold for 2 seconds (approx 66.67% of 3s) */
+  0%,
+  70% {
+    background-color: var(--color-accent-soft);
+  }
   100% {
-    color: inherit;
-  } /* Fade back to original over the last 1 second */
+    background-color: transparent;
+  }
 }
 
-/* Target the title link within the article when it's the URL hash target */
-article[id^="post-"]:target h2 a {
-  animation: highlight-fade 2s ease-out forwards; /* Apply the animation (3s total) and keep its end state */
-}
-
-/* Keep scroll margin on the article itself */
 article[id^="post-"]:target {
+  animation: highlight-fade 2s ease-out forwards;
+  border-radius: var(--radius-md);
   /* Add scroll margin to create space below fixed headers */
-  scroll-margin-top: 100px; /* Adjust value based on your header's height */
+  scroll-margin-top: 100px;
 }
 </style>

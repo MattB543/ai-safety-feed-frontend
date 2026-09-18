@@ -4,16 +4,19 @@
     <div class="mb-12">
       <div v-if="isLoadingOriginal" class="text-center py-10">
         <n-spin size="large" />
-        <p class="text-gray-600 mt-2">Loading Original Article...</p>
+        <p class="text-ink-2 mt-2">Loading Original Article...</p>
       </div>
       <div
         v-else-if="errorOriginal"
-        class="text-red-600 bg-red-100 p-4 rounded"
+        class="rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-danger"
       >
         {{ errorOriginal }}
       </div>
       <!-- Wrap original card for consistent styling -->
-      <div v-else-if="originalArticle" class="bg-white rounded-lg shadow-md">
+      <div
+        v-else-if="originalArticle"
+        class="rounded-lg border border-line bg-surface shadow-card"
+      >
         <ArticleCard
           :article="originalArticle"
           :hide-similar-button="true"
@@ -24,19 +27,21 @@
 
     <!-- Section 2: Similar Articles -->
     <div>
-      <div class="mb-6 border-b pb-2 border-gray-300">
-        <h2 class="text-2xl font-semibold text-gray-700">Similar Posts</h2>
+      <div class="mb-6 border-b border-line pb-2">
+        <h2 class="font-display text-2xl font-semibold text-ink">
+          Similar Posts
+        </h2>
       </div>
 
       <!-- Loading State for Similar Articles -->
       <div v-if="isLoadingSimilar" class="text-center py-10">
         <n-spin size="large" />
-        <p class="text-gray-600 mt-2">Loading Similar Articles...</p>
+        <p class="text-ink-2 mt-2">Loading Similar Articles...</p>
       </div>
       <!-- Error State for Similar Articles -->
       <div
         v-else-if="errorSimilar"
-        class="text-red-600 bg-red-100 p-4 rounded mb-4"
+        class="rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-danger mb-4"
       >
         {{ errorSimilar }}
       </div>
@@ -44,11 +49,14 @@
       <!-- Display List -->
       <div
         v-else-if="similarArticles.length === 0 && !isLoadingSimilar"
-        class="text-gray-600 text-center py-6"
+        class="text-ink-2 text-center py-6"
       >
         No similar posts found.
       </div>
-      <ul v-else class="bg-white rounded-lg shadow-md divide-y divide-gray-200">
+      <ul
+        v-else
+        class="rounded-lg border border-line bg-surface shadow-card divide-y divide-line"
+      >
         <li v-for="similar in similarArticles" :key="similar.id" class="p-6">
           <ArticleCard
             :article="similar"

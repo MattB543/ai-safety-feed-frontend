@@ -1,6 +1,6 @@
 <script setup>
-import { ref, computed, watch, defineProps, defineEmits } from "vue";
-import { NButton, NPopover, NCheckbox, NCheckboxGroup, NIcon } from "naive-ui";
+import { ref, computed, watch } from "vue";
+import { NButton, NPopover, NCheckbox, NCheckboxGroup } from "naive-ui";
 import { Filter } from "@vicons/tabler";
 import { formatTagForDisplay } from "../utils/formatters";
 
@@ -25,8 +25,7 @@ const props = defineProps({
 const emit = defineEmits(["update-tags"]);
 
 const showPopover = ref(false);
-// local copy edited inside the popover; we commit on "Apply"
-// Initialized as empty, will be populated by the watcher immediately
+// Draft edited inside the popover; re-seeded from props on open, committed on Apply.
 const localSelection = ref([]);
 
 // New computed property for "All Tags" checkbox state
@@ -82,44 +81,29 @@ const totalCount = computed(() => {
 });
 
 function commit() {
-  // If all available tags are in localSelection, emit all available tags.
-  // Otherwise, emit the contents of localSelection.
-  const allAvailableTagValues = props.availableTags.map((t) => t.tag);
-
-  const currentLocalSet = new Set(localSelection.value);
-  const allSelectedInPopover =
-    allAvailableTagValues.length > 0 &&
-    allAvailableTagValues.every((tag) => currentLocalSet.has(tag)) &&
-    currentLocalSet.size === allAvailableTagValues.length;
-
-  if (allSelectedInPopover) {
-    emit("update-tags", [...allAvailableTagValues]);
-  } else {
-    emit("update-tags", [...localSelection.value]);
-  }
+  emit("update-tags", [...localSelection.value]);
   showPopover.value = false;
 }
 
-watch(
-  [() => props.activeTags, () => props.availableTags],
-  ([newActiveTags, newAvailableTags]) => {
-    // localSelection should directly reflect props.activeTags.
-    // isAllTagsSelected will derive its state from this.
-    const targetSelection = [...newActiveTags];
+// Reset the draft from the committed props.
+function resetDraft() {
+  localSelection.value = [...props.activeTags];
+}
 
-    const currentLocalSet = new Set(localSelection.value);
-    const targetSet = new Set(targetSelection);
+// Cancel: throw the draft away, then close.
+function cancel() {
+  resetDraft();
+  showPopover.value = false;
+}
 
-    // Only update if different to prevent watcher loops and unnecessary changes
-    if (
-      currentLocalSet.size !== targetSet.size ||
-      ![...currentLocalSet].every((tag) => targetSet.has(tag))
-    ) {
-      localSelection.value = targetSelection;
-    }
-  },
-  { deep: true, immediate: true }
-);
+// Re-seed the draft from committed state every time the popover OPENS, so an
+// abandoned draft (outside click / Escape / Cancel) never leaks into the next
+// session of the popover.
+watch(showPopover, (isShown) => {
+  if (isShown) {
+    resetDraft();
+  }
+});
 </script>
 
 <template>
@@ -136,30 +120,27 @@ watch(
         type="button"
         :disabled="disabled"
         :class="[
-          'inline-flex items-center gap-1 px-3 py-2 border border-gray-300 shadow-xs text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none',
+          'btn-secondary',
           isFilterActive
-            ? 'outline outline-2 outline-blue-500'
-            : 'outline-none',
+            ? 'ring-2 ring-accent border-transparent bg-accent-soft text-accent-ink'
+            : '',
         ]"
       >
-        <Filter class="h-4 w-4" :stroke-width="isFilterActive ? 2 : 1" />
-        Tags
+        <Filter class="h-4 w-4" :stroke-width="1.75" />
+        Categories
       </button>
     </template>
 
     <!-- Popover content -->
-    <div class="p-3 min-w-[150px]">
+    <div class="p-3 min-w-[200px]">
+      <!-- "All" checkbox sits outside the scroll area, like SourceFilters -->
+      <NCheckbox v-model:checked="isAllTagsSelected" class="mb-2"
+        >All categories ({{ totalCount }})</NCheckbox
+      >
       <NCheckboxGroup
         v-model:value="localSelection"
-        class="flex flex-col gap-2"
+        class="flex flex-col gap-2 max-h-60 overflow-y-auto"
       >
-        <!-- Updated Checkbox for All Tags - now separate and uses isAllTagsSelected -->
-        <NCheckbox v-model:checked="isAllTagsSelected"
-          >All Tags ({{ totalCount }})</NCheckbox
-        >
-        <hr class="my-1" />
-        <!-- Optional: adds a visual separator -->
-        <!-- Updated loop for availableTags to use sorted list -->
         <NCheckbox v-for="t in sortedAvailableTags" :key="t.tag" :value="t.tag">
           {{ formatTagForDisplay(t.tag) }} ({{ t.post_count ?? 0 }})
         </NCheckbox>
@@ -167,11 +148,7 @@ watch(
 
       <!-- actions -->
       <div class="flex gap-2 mt-4">
-        <NButton
-          size="small"
-          tertiary
-          @click="showPopover = false"
-          style="flex: 1"
+        <NButton size="small" tertiary @click="cancel" style="flex: 1"
           >Cancel</NButton
         >
         <NButton size="small" type="primary" @click="commit" style="flex: 1">

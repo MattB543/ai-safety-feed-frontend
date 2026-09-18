@@ -1,6 +1,6 @@
 <script setup>
 import { computed, watch } from "vue";
-import { NInput, NButton, NIcon } from "naive-ui";
+import { NInput, NIcon } from "naive-ui";
 import { Search as SearchIcon } from "@vicons/tabler";
 
 const props = defineProps({
@@ -32,14 +32,6 @@ watch(value, (newValue, oldValue) => {
   }
 });
 
-// Theme overrides for the input component
-const inputThemeOverrides = {
-  borderHover: "1px solid #2080f0", // Naive UI primary blue
-  borderFocus: "1px solid #2080f0", // Naive UI primary blue
-  boxShadowFocus: "0 0 0 2px rgba(32, 128, 240, 0.2)", // Blue focus ring
-  borderRadius: "0.375rem", // Match button's rounded-md
-};
-
 function handleSearch() {
   emit("search");
 }
@@ -54,9 +46,9 @@ function handleSearch() {
       size="medium"
       clearable
       :disabled="disabled"
+      :input-props="{ 'aria-label': 'Search feed' }"
       @keyup.enter="handleSearch"
       class="flex-grow"
-      :theme-overrides="inputThemeOverrides"
     >
       <template #prefix>
         <NIcon>
@@ -68,7 +60,7 @@ function handleSearch() {
     <!-- Search button -->
     <button
       @click="handleSearch"
-      class="inline-flex items-center px-3 py-2 border border-gray-300 shadow-xs text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none flex-shrink-0"
+      class="btn-secondary flex-shrink-0"
     >
       Search
     </button>

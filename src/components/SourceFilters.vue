@@ -1,10 +1,7 @@
 <script setup>
-import { ref, computed, watch, defineProps, defineEmits } from "vue";
-import { NButton, NPopover, NCheckbox, NCheckboxGroup, NIcon } from "naive-ui";
+import { ref, computed, watch } from "vue";
+import { NButton, NPopover, NCheckbox, NCheckboxGroup } from "naive-ui";
 import { Filter } from "@vicons/tabler";
-
-// Remove the special value, we'll handle 'All' logic separately
-// const ALL_SOURCES_VALUE = "__ALL__";
 
 const props = defineProps({
   availableSources: {
@@ -58,9 +55,11 @@ const sortedAvailableSources = computed(() => {
 });
 
 // is *any* filter active (not all selected)
+// Derived from the COMMITTED state (props.activeSources), never from the
+// in-popover draft, so an abandoned draft cannot leave the trigger lit up.
 const isFilterActive = computed(() => {
   const allCount = props.availableSources.length;
-  return allCount > 0 && localSelection.value.length !== allCount;
+  return allCount > 0 && props.activeSources.length !== allCount;
 });
 
 const totalCount = computed(() => {
@@ -78,24 +77,25 @@ function commit() {
   showPopover.value = false;
 }
 
-// Watch for external changes to activeSources (e.g., parent component reset)
-watch(
-  () => props.activeSources,
-  (newActiveSources) => {
-    // Ensure localSelection reflects the actual state from the parent
-    if (
-      JSON.stringify(newActiveSources.slice().sort()) !==
-      JSON.stringify(localSelection.value.slice().sort())
-    ) {
-      localSelection.value = [...newActiveSources];
-    }
-  },
-  { deep: true } // Use deep watch if activeSources might be mutated elsewhere, though ideally it's replaced
-);
+// Reset the draft from the committed props.
+function resetDraft() {
+  localSelection.value = [...props.activeSources];
+}
 
-// No complex watch needed anymore for localSelection interaction with "All" checkbox,
-// as the computed property `isAllSelected` handles the logic via its getter and setter.
-// watch(localSelection, (newSelection, oldSelection) => { ... removed ... });
+// Cancel: throw the draft away, then close.
+function cancel() {
+  resetDraft();
+  showPopover.value = false;
+}
+
+// Re-seed the draft from committed state every time the popover OPENS, so an
+// abandoned draft (outside click / Escape / Cancel) never leaks into the next
+// session of the popover.
+watch(showPopover, (isShown) => {
+  if (isShown) {
+    resetDraft();
+  }
+});
 </script>
 
 <template>
@@ -112,19 +112,19 @@ watch(
         type="button"
         :disabled="disabled"
         :class="[
-          'inline-flex items-center gap-1 px-3 py-2 border border-gray-300 shadow-xs text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50',
+          'btn-secondary',
           isFilterActive
-            ? 'outline outline-2 outline-blue-500'
-            : 'outline-none',
+            ? 'ring-2 ring-accent border-transparent bg-accent-soft text-accent-ink'
+            : '',
         ]"
       >
-        <Filter class="h-4 w-4" :stroke-width="isFilterActive ? 2 : 1" />
+        <Filter class="h-4 w-4" :stroke-width="1.75" />
         Sources
       </button>
     </template>
 
     <!-- Popover content -->
-    <div class="p-3 min-w-[150px]">
+    <div class="p-3 min-w-[200px]">
       <!-- All Sources Checkbox -->
       <NCheckbox
         :checked="isAllSelected"
@@ -147,11 +147,7 @@ watch(
 
       <!-- actions -->
       <div class="flex gap-2 mt-4">
-        <NButton
-          size="small"
-          tertiary
-          @click="showPopover = false"
-          style="flex: 1"
+        <NButton size="small" tertiary @click="cancel" style="flex: 1"
           >Cancel</NButton
         >
         <NButton size="small" type="primary" @click="commit" style="flex: 1">

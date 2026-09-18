@@ -1,7 +1,7 @@
 <template>
-  <footer class="py-4 mt-8 border-t border-gray-200">
+  <footer class="py-4 mt-8 border-t border-line">
     <div class="w-full max-w-6xl mx-auto px-6">
-      <p class="text-center text-gray-500 text-sm">
+      <p class="text-center text-ink-3 text-sm">
         © {{ new Date().getFullYear() }} AI Safety Feed
       </p>
     </div>

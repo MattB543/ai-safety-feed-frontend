@@ -1,13 +1,5 @@
 <script setup>
-import {
-  defineEmits,
-  defineProps,
-  ref,
-  onMounted,
-  onBeforeUnmount,
-  watch,
-  nextTick,
-} from "vue";
+import { ref, onMounted, onBeforeUnmount, watch, nextTick } from "vue";
 import ArticleCard from "./ArticleCard.vue";
 
 // --- Props --- Get access to props for observer callback and template
@@ -21,6 +13,11 @@ const props = defineProps({
     required: true,
   },
   error: {
+    type: String,
+    default: null,
+  },
+  // Non-fatal error raised while appending another page
+  loadMoreError: {
     type: String,
     default: null,
   },
@@ -43,6 +40,10 @@ const props = defineProps({
 // --- Emits ---
 const emit = defineEmits(["clear-filters", "load-more", "toggle-bookmark"]); // Removed "show-similar"
 
+// --- Cold-start hint: only mention the sleeping server after a real wait ---
+const showColdStartHint = ref(false);
+let coldStartTimer = null;
+
 // --- Infinite Scroll Logic ---
 const loadMoreTrigger = ref(null); // Template ref for the sentinel div
 let observer = null;
@@ -63,7 +64,12 @@ const setupObserver = () => {
     (entries) => {
       const entry = entries[0];
       // Use props directly inside the callback
-      if (entry.isIntersecting && !props.isLoading && !props.allLoaded) {
+      if (
+        entry.isIntersecting &&
+        !props.isLoading &&
+        !props.allLoaded &&
+        !props.loadMoreError
+      ) {
         // console.log("Load more trigger intersecting, emitting load-more");
         emit("load-more"); // Emit event to parent to fetch more
       }
@@ -78,6 +84,22 @@ const setupObserver = () => {
   observer.observe(loadMoreTrigger.value);
 };
 
+// Show the cold-start hint only once a load from an empty list has been
+// running for 4s; clear it whenever that load finishes.
+watch(
+  () => props.isLoading && props.articles.length === 0,
+  (waitingFromEmpty) => {
+    clearTimeout(coldStartTimer);
+    showColdStartHint.value = false;
+    if (waitingFromEmpty) {
+      coldStartTimer = setTimeout(() => {
+        showColdStartHint.value = true;
+      }, 4000);
+    }
+  },
+  { immediate: true }
+);
+
 onMounted(() => {
   // Initial setup after component mounts
   // Use nextTick to ensure the trigger element is rendered
@@ -87,6 +109,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  clearTimeout(coldStartTimer);
   if (observer) {
     observer.disconnect();
     observer = null; // Clean up observer reference
@@ -121,57 +144,56 @@ watch(
 </script>
 
 <template>
-  <ul
-    class="bg-white max-w-[980px] mx-auto rounded-lg shadow-md pt-6 sm:p-6 divide-y divide-gray-200 min-h-[400px] flex flex-col"
+  <div
+    class="mx-auto min-h-[400px] max-w-[980px] rounded-lg border border-line bg-surface shadow-card"
   >
-    <!-- Loading State -->
+    <!-- Initial Loading State -->
     <div
       v-if="isLoading && articles.length === 0"
-      class="text-center text-gray-600 py-10 flex-grow flex flex-col items-center justify-center"
+      class="flex min-h-[400px] flex-col items-center justify-center gap-2 px-4 py-10 text-center"
     >
       <!-- Simple CSS Spinner -->
-      <div class="spinner mb-4"></div>
-      <p class="text-base">Loading articles...</p>
-      <p class="text-xs text-gray-500">
-        (refresh after 1 minute, the free tier server is starting up)
+      <div class="spinner mb-2"></div>
+      <p class="text-base text-ink-2">Loading articles...</p>
+      <p v-if="showColdStartHint" class="text-xs text-ink-3">
+        The server may be waking up, this can take up to a minute.
       </p>
     </div>
 
-    <!-- Error State -->
+    <!-- Error State: only when there is nothing to show -->
     <div
-      v-else-if="error"
-      class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded relative m-4 flex-grow flex flex-col items-center justify-center"
+      v-else-if="error && articles.length === 0"
       role="alert"
+      class="mx-4 my-6 rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-danger"
     >
-      <strong class="font-bold">Error!</strong>
-      <span class="block sm:inline"> {{ error }}</span>
+      {{ error }}
     </div>
 
     <!-- No Articles/Results State -->
     <div
       v-else-if="articles.length === 0 && !isLoading"
-      class="text-center text-gray-600 py-10 space-y-4 flex-grow flex flex-col items-center justify-center"
+      class="flex min-h-[400px] flex-col items-center justify-center gap-4 px-4 py-10 text-center text-ink-2"
     >
       <p v-if="props.isShowingBookmarks">
-        You haven't bookmarked any articles yet, or none match your other active
+        You haven't saved any posts yet, or none match your other active
         filters.
       </p>
-      <p v-else>No articles found. Try adjusting your search or filters.</p>
+      <p v-else>No posts found. Try adjusting your search or filters.</p>
       <button
         v-if="!props.isShowingBookmarks"
         @click="emit('clear-filters')"
-        class="text-sm text-blue-600 hover:text-blue-800 hover:bg-blue-100 py-1 px-3 rounded cursor-pointer"
+        class="btn-secondary"
       >
         Clear Filters
       </button>
     </div>
 
-    <!-- Articles Feed: Wrapped ArticleCard in li and added padding -->
-    <template v-else>
+    <!-- Articles Feed -->
+    <ul v-else class="divide-y divide-line px-6">
       <li
         v-for="article in articles"
         :key="article.id || article.source_url"
-        class="pt-14 pb-6 first:pt-6"
+        class="py-8 first:pt-6 last:pb-6"
       >
         <ArticleCard
           :article="article"
@@ -179,14 +201,37 @@ watch(
           @toggle-bookmark="emit('toggle-bookmark', article.id)"
         />
       </li>
-    </template>
+    </ul>
 
     <!-- Loading indicator for infinite scroll -->
-    <div v-if="isLoading && articles.length > 0" class="text-center py-4">
+    <div v-if="isLoading && articles.length > 0" class="py-4 text-center">
       <!-- Simple CSS Spinner for load more -->
       <div class="spinner mx-auto"></div>
-      <!-- <p class="text-gray-600">Loading more articles...</p> -->
     </div>
+
+    <!-- Load-more failure: keep what we have, offer a retry -->
+    <div
+      v-else-if="
+        loadMoreError && articles.length > 0 && !props.isShowingBookmarks
+      "
+      class="flex flex-col items-center gap-2 py-4 text-sm text-ink-3"
+    >
+      <p>{{ loadMoreError }}</p>
+      <button class="btn-secondary" @click="emit('load-more')">Retry</button>
+    </div>
+
+    <!-- End of feed marker -->
+    <p
+      v-else-if="
+        allLoaded &&
+        articles.length > 0 &&
+        !props.isShowingBookmarks &&
+        !isLoading
+      "
+      class="py-6 text-center text-sm text-ink-3"
+    >
+      You have reached the end.
+    </p>
 
     <!-- Sentinel Element for Intersection Observer -->
     <!-- Only render the trigger if there are articles and not all are loaded -->
@@ -195,16 +240,16 @@ watch(
       ref="loadMoreTrigger"
       class="h-10"
     ></div>
-  </ul>
+  </div>
 </template>
 
 <style scoped>
 .spinner {
-  border: 4px solid rgba(0, 0, 0, 0.1);
+  border: 4px solid rgba(0, 0, 0, 0.08);
   width: 36px;
   height: 36px;
   border-radius: 50%;
-  border-left-color: #09f; /* Customize color if needed */
+  border-left-color: var(--color-accent);
   animation: spin 1s ease infinite;
 }
 
@@ -215,12 +260,5 @@ watch(
   100% {
     transform: rotate(360deg);
   }
-}
-
-/* Ensure the list itself grows if content overflows the min-height */
-ul {
-  /* min-height is already applied via tailwind */
-  /* display: flex; */ /* Already applied via tailwind */
-  /* flex-direction: column; */ /* Already applied via tailwind */
 }
 </style>

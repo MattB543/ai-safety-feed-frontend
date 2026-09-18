@@ -1,5 +1,5 @@
 <script setup>
-import { watch, computed, ref, onMounted, onUnmounted } from "vue";
+import { computed, ref } from "vue";
 import { useArticles } from "../composables/useArticles";
 // Keep relevant component imports
 import ArticleList from "../components/ArticleList.vue";
@@ -7,22 +7,40 @@ import SearchBar from "../components/SearchBar.vue";
 import SourceFilters from "../components/SourceFilters.vue";
 import TagFilters from "../components/TagFilters.vue";
 import NoveltyFilter from "../components/NoveltyFilter.vue";
-import EmailSubscription from "../components/EmailSubscription.vue";
 // Remove SimilarDrawer import
 import { Dice as IconDice, Bookmark as IconBookmark } from "@vicons/tabler";
-import { NTooltip, NMessageProvider } from "naive-ui";
+import { NTooltip } from "naive-ui";
 
-const showIntroCard = ref(true);
+// --- Intro banner dismissal (persisted) ---
+const INTRO_DISMISSED_KEY = "introDismissed";
+
+function isIntroDismissed() {
+  try {
+    return localStorage.getItem(INTRO_DISMISSED_KEY) === "1";
+  } catch {
+    return false;
+  }
+}
+
+const showIntroCard = ref(!isIntroDismissed());
+
+function dismissIntroCard() {
+  showIntroCard.value = false;
+  try {
+    localStorage.setItem(INTRO_DISMISSED_KEY, "1");
+  } catch {
+    // Storage unavailable (private mode / quota) - dismissal is session-only.
+  }
+}
 
 // Keep useArticles logic
 const {
   articles,
   isLoading,
   error,
+  loadMoreError,
   fetchArticles,
-  availableSources,
   activeSources,
-  sourceCounts,
   searchTerm,
   queryTerm,
   updateActiveSources,
@@ -104,21 +122,23 @@ function handleLoadMore() {
   <!-- Introductory Card -->
   <div
     v-if="showIntroCard"
-    class="relative max-w-[980px] mx-auto mb-8 p-4 pr-8 bg-white text-gray-700 rounded-md shadow-sm"
+    class="relative mx-auto mb-8 max-w-[980px] rounded-lg border border-line bg-surface p-4 pr-10 text-sm text-ink-2 shadow-card"
   >
-    <p class="text-sm">
+    <p>
       Cut through the noise with AI Safety Feed. We curate content from key
       sources (LessWrong, EA Forum, blogs, etc), using AI to add summaries,
       tags, and novelty scores. Quickly find the research and discussions that
       matter most to you. Learn more about our goals and methods
-      <router-link to="/about" class="font-medium underline hover:text-gray-900"
+      <router-link
+        to="/about"
+        class="font-medium text-accent hover:text-accent-hover"
         >on the about page</router-link
       >.
     </p>
 
     <button
-      @click="showIntroCard = false"
-      class="absolute top-2 right-2 p-1 text-gray-500 hover:text-gray-700 focus:outline-none focus:ring-2 focus:ring-gray-400 rounded-full"
+      @click="dismissIntroCard"
+      class="absolute top-2 right-2 rounded-full p-1 text-ink-3 transition-colors hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
       aria-label="Close introduction card"
     >
       <svg
@@ -159,7 +179,7 @@ function handleLoadMore() {
       <button
         v-if="isFilterActive"
         @click="clearFilters"
-        class="text-sm text-blue-600 rounded px-2 py-1 transition-colors duration-150 ease-in-out focus:outline-none hover:bg-blue-100 hover:text-blue-700 focus:bg-blue-100 focus:text-blue-700"
+        class="rounded-md px-2 py-1 text-sm font-medium text-accent transition-colors hover:bg-accent-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         aria-label="Clear all filters"
       >
         Clear filters
@@ -169,7 +189,7 @@ function handleLoadMore() {
       <button
         v-if="isRandomized && !showOnlyBookmarks"
         @click="resetOrder"
-        class="text-sm text-blue-600 rounded px-2 py-1 transition-colors duration-150 ease-in-out focus:outline-none hover:bg-blue-100 hover:text-blue-700 focus:bg-blue-100 focus:text-blue-700"
+        class="rounded-md px-2 py-1 text-sm font-medium text-accent transition-colors hover:bg-accent-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
         aria-label="Reset article order to default (date)"
       >
         Reset order
@@ -181,17 +201,18 @@ function handleLoadMore() {
           <button
             @click="showOnlyBookmarks = !showOnlyBookmarks"
             :class="[
-              'inline-flex items-center gap-1 px-3 py-2 border border-gray-300 shadow-xs text-sm leading-4 font-medium rounded-md text-gray-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400',
+              'btn-secondary',
               showOnlyBookmarks
-                ? 'bg-blue-100 text-blue-700 hover:bg-blue-200'
-                : 'bg-white hover:bg-gray-50',
+                ? 'ring-2 ring-accent border-transparent bg-accent-soft text-accent-ink'
+                : '',
             ]"
-            aria-label="Toggle showing only bookmarked articles"
+            :aria-pressed="showOnlyBookmarks"
+            aria-label="Toggle showing only saved posts"
           >
-            <IconBookmark stroke-width="3" class="h-4 w-4" />
+            <IconBookmark stroke-width="2" class="h-4 w-4" />
           </button>
         </template>
-        Show bookmarked posts
+        Show saved posts
       </NTooltip>
 
       <!--  Random Order Button -->
@@ -200,13 +221,13 @@ function handleLoadMore() {
           <button
             @click="requestRandomOrder"
             :disabled="showOnlyBookmarks"
-            class="inline-flex items-center gap-1 px-3 py-2 border border-gray-300 shadow-xs text-sm leading-4 font-medium rounded-md text-gray-700 bg-white hover:bg-gray-50 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-400 disabled:opacity-50 disabled:cursor-not-allowed"
-            aria-label="Randomize article order"
+            class="btn-secondary"
+            aria-label="Shuffle post order"
           >
-            <IconDice stroke-width="3" class="h-4 w-4" />
+            <IconDice stroke-width="2" class="h-4 w-4" />
           </button>
         </template>
-        Randomize article order
+        Shuffle order
       </NTooltip>
 
       <!-- Novelty Filter Component -->
@@ -232,25 +253,18 @@ function handleLoadMore() {
   </div>
 
   <!--  Main Article List -->
-  <div class="max-w-[980px] mx-auto">
-    <!-- Display Loading/Error/Content -->
-    <div v-if="error" class="text-center py-10 text-red-500">
-      Error: {{ error }}
-    </div>
-    <div v-else>
-      <ArticleList
-        :articles="articles"
-        :isLoading="isLoading"
-        :error="error"
-        :allLoaded="allLoaded"
-        :bookmarkedIds="bookmarkedIds"
-        :isShowingBookmarks="showOnlyBookmarks"
-        @clear-filters="clearFilters"
-        @load-more="handleLoadMore"
-        @toggle-bookmark="toggleBookmark"
-      />
-    </div>
-  </div>
+  <ArticleList
+    :articles="articles"
+    :isLoading="isLoading"
+    :error="error"
+    :load-more-error="loadMoreError"
+    :allLoaded="allLoaded"
+    :bookmarkedIds="bookmarkedIds"
+    :isShowingBookmarks="showOnlyBookmarks"
+    @clear-filters="clearFilters"
+    @load-more="handleLoadMore"
+    @toggle-bookmark="toggleBookmark"
+  />
 </template>
 
 <style scoped>

@@ -1,21 +1,22 @@
 <script setup>
-// Remove most imports, keep only header/footer
+import { NConfigProvider, NMessageProvider } from "naive-ui";
 import AppHeader from "./components/AppHeader.vue";
 import AppFooter from "./components/AppFooter.vue";
-
-// Keep API_BASE_URL if needed by header/footer
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+import { naiveTheme } from "./theme/naive";
 </script>
 
 <template>
-  <div class="bg-gray-50 min-h-screen flex flex-col">
-    <AppHeader :API_BASE_URL="API_BASE_URL" />
+  <n-config-provider :theme-overrides="naiveTheme">
+    <n-message-provider>
+      <div class="bg-ground text-ink min-h-screen flex flex-col">
+        <AppHeader />
 
-    <main class="flex-grow w-full py-8 px-4">
-      <router-view />
-    </main>
+        <main id="main" class="flex-grow w-full py-8 px-4">
+          <router-view />
+        </main>
 
-    <AppFooter />
-  </div>
+        <AppFooter />
+      </div>
+    </n-message-provider>
+  </n-config-provider>
 </template>

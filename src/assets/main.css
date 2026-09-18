@@ -1,5 +1,87 @@
 @import "tailwindcss";
+@plugin "@tailwindcss/typography";
+
+@theme {
+  --color-ground: #f8f7f3;
+  --color-surface: #ffffff;
+  --color-surface-2: #f2f1ec;
+  --color-line: #e6e3db;
+  --color-line-strong: #d6d2c8;
+  --color-ink: #252a30;
+  --color-ink-2: #4b535c;
+  --color-ink-3: #5f6771;
+  --color-accent: #315ea8;
+  --color-accent-hover: #28508f;
+  --color-accent-soft: #edf2fa;
+  --color-accent-ink: #244477;
+  --color-novelty-high: #c9832a;
+  --color-danger: #b4382d;
+  --color-danger-soft: #fbeeec;
+  --color-success: #2f7a4f;
+
+  --font-display: "Funnel Display", ui-sans-serif, system-ui, sans-serif;
+  --font-sans: "Commissioner", ui-sans-serif, system-ui, sans-serif;
+
+  /* ~25% less rounded than the original 6 / 10 / 14 scale. */
+  --radius-sm: 4.5px;
+  --radius-md: 7.5px;
+  --radius-lg: 10.5px;
+  /* Bare `rounded` — Tailwind's deprecated alias, default 4px. */
+  --radius: 3px;
+
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 0.04);
+  --shadow-pop: 0 8px 24px rgb(0 0 0 / 0.1), 0 0 0 1px #e6e3db;
+}
+
+body {
+  background-color: var(--color-ground);
+  color: var(--color-ink);
+}
 
 button {
   cursor: pointer;
+}
+
+/* The one outlined button style used across the app. */
+@utility btn-secondary {
+  @apply inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-3 py-2 text-sm font-medium text-ink-2 transition-colors hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+/* The one outlined button style used across the app. */
+@utility btn-secondary {
+  @apply inline-flex items-center gap-1.5 rounded-md border border-line bg-surface px-3 py-2 text-sm font-medium text-ink-2 transition-colors hover:bg-surface-2 focus:outline-none focus-visible:ring-2 focus-visible:ring-accent disabled:cursor-not-allowed disabled:opacity-50;
+}
+
+.collapse-enter-active,
+.collapse-leave-active {
+  transition:
+    grid-template-rows 180ms ease,
+    opacity 180ms ease;
+}
+.collapse-enter-from,
+.collapse-leave-to {
+  grid-template-rows: 0fr;
+  opacity: 0;
+}
+.collapse-enter-to,
+.collapse-leave-from {
+  grid-template-rows: 1fr;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
+
+/* The typography plugin hardcodes its own radii; keep the markdown summaries
+   on the same scale as the rest of the UI. */
+.prose pre,
+.prose kbd {
+  border-radius: var(--radius-sm);
 }
