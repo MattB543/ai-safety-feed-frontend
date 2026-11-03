@@ -237,7 +237,8 @@ export function useArticles() {
       offset.value += data.length;
       allLoaded.value = !pagination.hasMore || orderBy.value === "random";
     } catch (err) {
-      if (err.name !== "AbortError") {
+      // A superseded request must not touch the state of the one that replaced it.
+      if (err.name !== "AbortError" && !controller.signal.aborted) {
         console.error("Error fetching articles:", err);
         if (append) {
           // Keep the articles already on screen; surface a retryable message.
@@ -281,7 +282,7 @@ export function useArticles() {
       });
       allLoaded.value = true; // We fetched all requested bookmarks, no more pages
     } catch (err) {
-      if (err.name !== "AbortError") {
+      if (err.name !== "AbortError" && !controller.signal.aborted) {
         console.error("Error fetching bookmarked articles:", err);
         error.value = `Failed to load bookmarked articles: ${err.message}.`;
         articles.value = []; // Clear articles on error

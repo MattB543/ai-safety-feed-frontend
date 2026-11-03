@@ -32,7 +32,9 @@ async function request(url, init) {
   let body = null;
   try {
     body = await response.json();
-  } catch {
+  } catch (err) {
+    // An abort can land while the body is still being read; let callers see it.
+    if (err.name === "AbortError") throw err;
     // Non-JSON body (e.g. a proxy error page); the status says enough.
   }
   if (!response.ok) {

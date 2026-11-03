@@ -147,6 +147,9 @@ watch(
       similarArticles.value = [];
       errorOriginal.value = "Invalid article ID format in URL.";
       errorSimilar.value = "Invalid article ID format in URL.";
+      // The aborted fetches leave their spinners on; clear them here.
+      isLoadingOriginal.value = false;
+      isLoadingSimilar.value = false;
       return;
     }
     controller = new AbortController();
