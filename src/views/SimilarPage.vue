@@ -54,7 +54,7 @@
             :article="similar"
             :hide-similar-button="true"
             :is-bookmarked="bookmarkedIds.has(similar.id)"
-            @toggle-bookmark="() => toggleBookmark(similar.id)"
+            @toggle-bookmark="toggleBookmark"
           />
         </li>
       </ul>
@@ -63,22 +63,18 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from "vue";
+import { ref, watch, computed, onBeforeUnmount } from "vue";
 import { useHead } from "@vueuse/head"; // Import useHead
 import { useRoute } from "vue-router"; // <-- Import useRoute
 import ArticleCard from "../components/ArticleCard.vue";
 import { NSpin } from "naive-ui";
-import { useArticles } from "../composables/useArticles"; // Import useArticles
-import { API_BASE_URL } from "../api";
+import { useBookmarks } from "../composables/useBookmarks";
+import { getJson } from "../api";
 
 // Get route object
 const route = useRoute();
 
-// State for the parsed ID
-const articleId = ref(null);
-
-// --- Get bookmark state from useArticles ---
-const { bookmarkedIds, toggleBookmark } = useArticles();
+const { bookmarkedIds, toggleBookmark } = useBookmarks();
 
 // State for Original Article
 const originalArticle = ref(null);
@@ -90,63 +86,77 @@ const similarArticles = ref([]);
 const isLoadingSimilar = ref(false);
 const errorSimilar = ref(null);
 
+// Aborted when the route moves to another post (or the page unmounts), so a
+// slow response for the previous post can't overwrite the current one.
+let controller = null;
+
 // --- Fetching Functions ---
 
-async function fetchOriginalArticle(idToFetch) {
-  // <-- Use passed ID
+async function fetchOriginalArticle(idToFetch, signal) {
   isLoadingOriginal.value = true;
   errorOriginal.value = null;
   originalArticle.value = null;
-  if (!idToFetch) {
-    errorOriginal.value = "Article ID is missing.";
-    isLoadingOriginal.value = false;
-    return;
-  }
   try {
-    const response = await fetch(`${API_BASE_URL}/api/content/${idToFetch}`); // <-- Use passed ID
-    if (!response.ok) {
-      throw new Error(
-        `HTTP error! Status: ${response.status} ${response.statusText}`
-      );
-    }
-    originalArticle.value = await response.json();
+    originalArticle.value = await getJson(`/api/v1/posts/${idToFetch}`, {
+      signal,
+    });
   } catch (e) {
+    if (e.name === "AbortError") return;
     console.error("Failed to fetch original article:", e);
-    errorOriginal.value = `Failed to load original article (ID: ${idToFetch}). ${e.message}`; // <-- Use passed ID
+    errorOriginal.value = `Failed to load original article (ID: ${idToFetch}). ${e.message}`;
   } finally {
-    isLoadingOriginal.value = false;
+    if (!signal.aborted) isLoadingOriginal.value = false;
   }
 }
 
-// Fetch AI-ranked similar articles
-async function fetchSimilarArticles(idToFetch) {
-  // <-- Use passed ID
+// Nearest posts by embedding distance (up to 20)
+async function fetchSimilarArticles(idToFetch, signal) {
   isLoadingSimilar.value = true;
   errorSimilar.value = null;
   similarArticles.value = []; // Clear previous results
-  if (!idToFetch) {
-    errorSimilar.value = "Article ID is missing for similar search.";
-    isLoadingSimilar.value = false;
-    return;
-  }
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/api/similar/${idToFetch}/ai?n=10` // <-- Use passed ID
-    ); // Fetch 10 AI results
-    if (!response.ok) {
-      const errorData = await response.text(); // Try to get error body
-      throw new Error(
-        `HTTP error! Status: ${response.status} ${response.statusText}. ${errorData}`
-      );
-    }
-    similarArticles.value = await response.json();
+    similarArticles.value = await getJson(`/api/similar/${idToFetch}`, {
+      signal,
+    });
   } catch (e) {
+    if (e.name === "AbortError") return;
     console.error("Failed to fetch similar articles:", e);
     errorSimilar.value = `Failed to load similar articles. ${e.message}`;
   } finally {
-    isLoadingSimilar.value = false;
+    if (!signal.aborted) isLoadingSimilar.value = false;
   }
 }
+
+// The route param is "<slug>-<id>"; the id is everything after the last dash.
+function parseId(slugWithId) {
+  if (typeof slugWithId !== "string") return null;
+  const id = Number(slugWithId.slice(slugWithId.lastIndexOf("-") + 1));
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+watch(
+  () => route.params.slugWithId,
+  (slugWithId) => {
+    controller?.abort();
+    controller = null;
+    if (slugWithId === undefined) return; // navigating away from this page
+    const id = parseId(slugWithId);
+    if (id === null) {
+      console.error("No valid article id in slugWithId:", slugWithId);
+      originalArticle.value = null;
+      similarArticles.value = [];
+      errorOriginal.value = "Invalid article ID format in URL.";
+      errorSimilar.value = "Invalid article ID format in URL.";
+      return;
+    }
+    controller = new AbortController();
+    fetchOriginalArticle(id, controller.signal);
+    fetchSimilarArticles(id, controller.signal);
+  },
+  { immediate: true }
+);
+
+onBeforeUnmount(() => controller?.abort());
 
 // --- SEO Head Management ---
 useHead(
@@ -209,72 +219,6 @@ useHead(
   })
 );
 
-onMounted(() => {
-  const slugWithId = route.params.slugWithId;
-  if (typeof slugWithId === "string") {
-    const lastDashIndex = slugWithId.lastIndexOf("-");
-    if (lastDashIndex > -1) {
-      const idStr = slugWithId.substring(lastDashIndex + 1);
-      const potentialId = parseInt(idStr, 10);
-      if (!isNaN(potentialId)) {
-        articleId.value = potentialId;
-
-        // Fetch data using the parsed ID
-        fetchOriginalArticle(articleId.value);
-        fetchSimilarArticles(articleId.value);
-      } else {
-        console.error("Parsed ID is not a valid number:", idStr);
-        errorOriginal.value = "Invalid article ID format in URL.";
-        errorSimilar.value = "Invalid article ID format in URL.";
-      }
-    } else {
-      console.error("Could not find '-' separator in slugWithId:", slugWithId);
-      errorOriginal.value = "Invalid URL format for similar posts.";
-      errorSimilar.value = "Invalid URL format for similar posts.";
-    }
-  } else {
-    console.error("slugWithId param is missing or not a string:", slugWithId);
-    errorOriginal.value = "Missing article identifier in URL.";
-    errorSimilar.value = "Missing article identifier in URL.";
-  }
-});
-
-watch(
-  () => route.params.slugWithId,
-  (newSlugWithId) => {
-    if (newSlugWithId && typeof newSlugWithId === "string") {
-      // Re-parse and fetch if the parameter changes
-      const lastDashIndex = newSlugWithId.lastIndexOf("-");
-      if (lastDashIndex > -1) {
-        const idStr = newSlugWithId.substring(lastDashIndex + 1);
-        const potentialId = parseInt(idStr, 10);
-        if (!isNaN(potentialId)) {
-          articleId.value = potentialId;
-          fetchOriginalArticle(articleId.value);
-          fetchSimilarArticles(articleId.value);
-        } else {
-          console.error("Parsed ID is not a valid number:", idStr);
-          errorOriginal.value = "Invalid article ID format in URL.";
-          errorSimilar.value = "Invalid article ID format in URL.";
-        }
-      } else {
-        console.error(
-          "Could not find '-' separator in slugWithId:",
-          newSlugWithId
-        );
-        errorOriginal.value = "Invalid URL format for similar posts.";
-        errorSimilar.value = "Invalid URL format for similar posts.";
-      }
-    } else {
-      console.error(
-        "slugWithId param is missing or not a string:",
-        newSlugWithId
-      );
-      errorOriginal.value = "Missing article identifier in URL.";
-      errorSimilar.value = "Missing article identifier in URL.";
-    }
-  }
-);
 </script>
 
 <style scoped>
