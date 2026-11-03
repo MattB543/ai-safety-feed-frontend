@@ -21,6 +21,10 @@ export function useArticles() {
   const allLoaded = ref(false); // Tracks pagination for the *normal* feed
   const abortController = ref(null);
   const isInitializing = ref(true);
+  // Feed order: "date" (paginated) or "random" (one random batch, no paging,
+  // because appending date-ordered pages after a random page would mix orders
+  // and the API has no stable random cursor).
+  const orderBy = ref("date");
 
   // --- Bookmark State ---
   const bookmarkedIds = ref(new Set());
@@ -209,7 +213,7 @@ export function useArticles() {
       }
 
       offset.value += newArticles.length;
-      if (newArticles.length < pageSize) {
+      if (newArticles.length < pageSize || options.orderBy === "random") {
         allLoaded.value = true;
       }
     } catch (err) {
@@ -331,6 +335,8 @@ export function useArticles() {
     [queryTerm, activeSources, activeTags, minNovelty],
     () => {
       if (isInitializing.value) return;
+      // Changing filters or search always returns to date order.
+      orderBy.value = "date";
       // *** IMPORTANT: Only trigger fetch if NOT showing bookmarks ***
       if (!showOnlyBookmarks.value) {
         fetchArticles({
@@ -350,6 +356,7 @@ export function useArticles() {
   // Watcher for the bookmark toggle
   watch(showOnlyBookmarks, (isShowing) => {
     if (isInitializing.value) return;
+    orderBy.value = "date";
     if (isShowing) {
       // Fetch only bookmarked articles
       fetchBookmarkedArticles();
@@ -407,6 +414,7 @@ export function useArticles() {
       // Maybe show a notification to the user?
       return;
     }
+    orderBy.value = "random";
     await fetchArticles({
       append: false,
       query: queryTerm.value,
@@ -417,13 +425,33 @@ export function useArticles() {
     });
   }
 
-  // Load More Articles - Only for the normal feed
+  // Back to the default date order with the current filters.
+  async function resetOrder() {
+    orderBy.value = "date";
+    if (showOnlyBookmarks.value) return;
+    await fetchArticles({
+      append: false,
+      query: queryTerm.value,
+      orderBy: "date",
+      sources: activeSources.value,
+      tags: activeTags.value,
+      novelty: minNovelty.value,
+    });
+  }
+
+  // Load More Articles - Only for the normal, date-ordered feed. Random order
+  // is a single batch (allLoaded is set), so this never appends to it.
   function loadMore() {
-    if (!isLoading.value && !allLoaded.value && !showOnlyBookmarks.value) {
+    if (
+      !isLoading.value &&
+      !allLoaded.value &&
+      !showOnlyBookmarks.value &&
+      orderBy.value === "date"
+    ) {
       fetchArticles({
         append: true, // Append results
         query: queryTerm.value,
-        orderBy: "date", // Or current order
+        orderBy: "date",
         sources: activeSources.value,
         tags: activeTags.value,
         novelty: minNovelty.value,
@@ -457,6 +485,8 @@ export function useArticles() {
     allLoaded, // Reflects pagination state *only for the normal feed*
     minNovelty,
     fetchRandomOrder,
+    resetOrder,
+    orderBy, // "date" | "random": the single source of truth for feed order
     // Bookmark related
     bookmarkedIds,
     showOnlyBookmarks,

@@ -8,7 +8,11 @@ import SourceFilters from "../components/SourceFilters.vue";
 import TagFilters from "../components/TagFilters.vue";
 import NoveltyFilter from "../components/NoveltyFilter.vue";
 // Remove SimilarDrawer import
-import { Dice as IconDice, Bookmark as IconBookmark } from "@vicons/tabler";
+import {
+  Dice as IconDice,
+  Bookmark as IconBookmark,
+  X as IconX,
+} from "@vicons/tabler";
 import { NTooltip } from "naive-ui";
 
 // --- Intro banner dismissal (persisted) ---
@@ -39,7 +43,6 @@ const {
   isLoading,
   error,
   loadMoreError,
-  fetchArticles,
   activeSources,
   searchTerm,
   queryTerm,
@@ -52,6 +55,8 @@ const {
   allAvailableSources,
   allSourceCounts,
   fetchRandomOrder,
+  resetOrder,
+  orderBy,
   showOnlyBookmarks,
   toggleBookmark,
   bookmarkedIds,
@@ -76,7 +81,8 @@ const isFilterActive = computed(() => {
   );
 });
 
-const isRandomized = ref(false);
+// Derived from the composable's single order state.
+const isRandomized = computed(() => orderBy.value === "random");
 
 function handleSearch() {
   queryTerm.value = searchTerm.value.trim();
@@ -89,28 +95,15 @@ function clearFilters() {
   updateActiveTags(availableTags.value.map((t) => t.tag));
   minNovelty.value = null;
   showOnlyBookmarks.value = false;
+  // If nothing above actually changed, no filter watcher fires, so return
+  // to date order explicitly.
   if (isRandomized.value) {
-    isRandomized.value = false;
+    resetOrder();
   }
 }
 
 function requestRandomOrder() {
   fetchRandomOrder();
-  isRandomized.value = true;
-}
-
-function resetOrder() {
-  if (!showOnlyBookmarks.value) {
-    fetchArticles({
-      append: false,
-      query: queryTerm.value,
-      orderBy: "date",
-      sources: activeSources.value,
-      tags: activeTags.value,
-      novelty: minNovelty.value,
-    });
-  }
-  isRandomized.value = false;
 }
 
 function handleLoadMore() {
@@ -119,154 +112,160 @@ function handleLoadMore() {
 </script>
 
 <template>
-  <!-- Introductory Card -->
-  <div
-    v-if="showIntroCard"
-    class="relative mx-auto mb-8 max-w-[980px] rounded-lg border border-line bg-surface p-4 pr-10 text-sm text-ink-2 shadow-card"
-  >
-    <p>
-      Cut through the noise with AI Safety Feed. We curate content from key
-      sources (LessWrong, EA Forum, blogs, etc), using AI to add summaries,
-      tags, and novelty scores. Quickly find the research and discussions that
-      matter most to you. Learn more about our goals and methods
-      <router-link
-        to="/about"
-        class="font-medium text-accent hover:text-accent-hover"
-        >on the about page</router-link
-      >.
-    </p>
+  <div class="mx-auto max-w-content">
+    <!-- Page header: big light title, then the (dismissible) intro sentence
+         with one highlighted phrase, as on aisafety.com directory pages. -->
+    <header class="pt-8 pb-8 lg:pt-14 lg:pb-14">
+      <h1 class="type-h1 -ml-1 text-ink">Feed</h1>
 
-    <button
-      @click="dismissIntroCard"
-      class="absolute top-2 right-2 rounded-full p-1 text-ink-3 transition-colors hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-      aria-label="Close introduction card"
-    >
-      <svg
-        class="h-4 w-4"
-        fill="none"
-        viewBox="0 0 24 24"
-        stroke="currentColor"
-        stroke-width="2"
-      >
-        <path
-          stroke-linecap="round"
-          stroke-linejoin="round"
-          d="M6 18L18 6M6 6l12 12"
-        />
-      </svg>
-    </button>
-  </div>
+      <div v-if="showIntroCard" class="mt-4 max-w-[640px] lg:mt-8">
+        <!-- Floated so only the first lines make room for it. -->
+        <button
+          class="float-right -mt-1 ml-3 inline-flex h-8 w-8 items-center justify-center rounded-full text-ink-3 transition-colors hover:bg-surface-2 hover:text-white"
+          aria-label="Close introduction card"
+          title="Hide introduction"
+          @click="dismissIntroCard"
+        >
+          <IconX class="h-4 w-4" stroke-width="1.5" />
+        </button>
+        <p class="intro-text text-ink">
+          AI safety writing from LessWrong, the EA Forum, blogs and podcasts,
+          with AI-written
+          <span class="text-accent">summaries, tags and novelty scores</span>.
+        </p>
+        <p class="mt-3 text-small text-ink-2 lg:mt-4">
+          Learn more about our goals and methods on the
+          <router-link
+            to="/about"
+            class="text-white transition-colors hover:text-accent"
+            >About page →</router-link
+          >
+        </p>
+      </div>
+    </header>
 
-  <!--  Search and Filters Container -->
-  <div
-    class="max-w-[980px] mx-auto mb-4 flex flex-col md:flex-row md:items-start gap-4 md:gap-6"
-  >
-    <!--  Search Input -->
-    <SearchBar
-      v-model="searchTerm"
-      @search="handleSearch"
-      class="flex-grow max-w-[400px]"
-      :disabled="showOnlyBookmarks"
-      :placeholder="
-        showOnlyBookmarks ? 'Search disabled for bookmarks' : 'Search feed...'
-      "
-    />
-
+    <!--  Search and Filters Container -->
     <div
-      class="flex items-center gap-2 md:flex-shrink-0 md:ml-auto flex-wrap justify-start md:justify-end"
+      class="mb-8 flex flex-col gap-4 lg:mb-10 lg:flex-row lg:items-start lg:gap-6"
     >
-      <!--  Clear Filter Button -->
-      <button
-        v-if="isFilterActive"
-        @click="clearFilters"
-        class="rounded-md px-2 py-1 text-sm font-medium text-accent transition-colors hover:bg-accent-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        aria-label="Clear all filters"
-      >
-        Clear filters
-      </button>
-
-      <!--  Reset Order Button -->
-      <button
-        v-if="isRandomized && !showOnlyBookmarks"
-        @click="resetOrder"
-        class="rounded-md px-2 py-1 text-sm font-medium text-accent transition-colors hover:bg-accent-soft focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
-        aria-label="Reset article order to default (date)"
-      >
-        Reset order
-      </button>
-
-      <!-- Show Bookmarks Button -->
-      <NTooltip :delay="0" :duration="0">
-        <template #trigger>
-          <button
-            @click="showOnlyBookmarks = !showOnlyBookmarks"
-            :class="[
-              'btn-secondary',
-              showOnlyBookmarks
-                ? 'ring-2 ring-accent border-transparent bg-accent-soft text-accent-ink'
-                : '',
-            ]"
-            :aria-pressed="showOnlyBookmarks"
-            aria-label="Toggle showing only saved posts"
-          >
-            <IconBookmark stroke-width="2" class="h-4 w-4" />
-          </button>
-        </template>
-        Show saved posts
-      </NTooltip>
-
-      <!--  Random Order Button -->
-      <NTooltip :delay="0" :duration="0">
-        <template #trigger>
-          <button
-            @click="requestRandomOrder"
-            :disabled="showOnlyBookmarks"
-            class="btn-secondary"
-            aria-label="Shuffle post order"
-          >
-            <IconDice stroke-width="2" class="h-4 w-4" />
-          </button>
-        </template>
-        Shuffle order
-      </NTooltip>
-
-      <!-- Novelty Filter Component -->
-      <NoveltyFilter v-model="minNovelty" :disabled="showOnlyBookmarks" />
-
-      <!--  Source Filters -->
-      <SourceFilters
-        :availableSources="allAvailableSources"
-        :activeSources="activeSources"
-        :counts="allSourceCounts"
-        @update-sources="updateActiveSources"
+      <!--  Search Input -->
+      <SearchBar
+        v-model="searchTerm"
+        class="lg:min-w-[240px] lg:flex-[0_1_360px]"
         :disabled="showOnlyBookmarks"
+        :placeholder="
+          showOnlyBookmarks ? 'Search disabled for bookmarks' : 'Search feed...'
+        "
+        @search="handleSearch"
       />
 
-      <!--  Tag Filters -->
-      <TagFilters
-        :availableTags="availableTags"
-        :activeTags="activeTags"
-        @update-tags="updateActiveTags"
-        :disabled="showOnlyBookmarks"
-      />
+      <div
+        class="flex min-w-0 flex-wrap items-center justify-start gap-2 lg:flex-1 lg:justify-end"
+      >
+        <!--  Clear Filter Button -->
+        <button
+          v-if="isFilterActive"
+          class="text-action"
+          aria-label="Clear all filters"
+          @click="clearFilters"
+        >
+          Clear filters
+        </button>
+
+        <!--  Reset Order Button -->
+        <button
+          v-if="isRandomized && !showOnlyBookmarks"
+          class="text-action"
+          aria-label="Reset article order to default (date)"
+          @click="resetOrder"
+        >
+          Reset order
+        </button>
+
+        <!-- Show Bookmarks Button -->
+        <NTooltip :delay="0" :duration="0">
+          <template #trigger>
+            <button
+              :class="['filter-pill-icon', { 'is-active': showOnlyBookmarks }]"
+              :aria-pressed="showOnlyBookmarks"
+              aria-label="Toggle showing only saved posts"
+              @click="showOnlyBookmarks = !showOnlyBookmarks"
+            >
+              <IconBookmark stroke-width="1.5" class="h-4 w-4" />
+            </button>
+          </template>
+          Show saved posts
+        </NTooltip>
+
+        <!--  Random Order Button -->
+        <NTooltip :delay="0" :duration="0">
+          <template #trigger>
+            <button
+              :disabled="showOnlyBookmarks"
+              :class="['filter-pill-icon', { 'is-active': isRandomized }]"
+              aria-label="Shuffle post order"
+              @click="requestRandomOrder"
+            >
+              <IconDice stroke-width="1.5" class="h-4 w-4" />
+            </button>
+          </template>
+          Shuffle order
+        </NTooltip>
+
+        <!-- Novelty Filter Component -->
+        <NoveltyFilter v-model="minNovelty" :disabled="showOnlyBookmarks" />
+
+        <!--  Source Filters -->
+        <SourceFilters
+          :available-sources="allAvailableSources"
+          :active-sources="activeSources"
+          :counts="allSourceCounts"
+          :disabled="showOnlyBookmarks"
+          @update-sources="updateActiveSources"
+        />
+
+        <!--  Tag Filters -->
+        <TagFilters
+          :available-tags="availableTags"
+          :active-tags="activeTags"
+          :disabled="showOnlyBookmarks"
+          @update-tags="updateActiveTags"
+        />
+      </div>
     </div>
-  </div>
 
-  <!--  Main Article List -->
-  <ArticleList
-    :articles="articles"
-    :isLoading="isLoading"
-    :error="error"
-    :load-more-error="loadMoreError"
-    :allLoaded="allLoaded"
-    :bookmarkedIds="bookmarkedIds"
-    :isShowingBookmarks="showOnlyBookmarks"
-    @clear-filters="clearFilters"
-    @load-more="handleLoadMore"
-    @toggle-bookmark="toggleBookmark"
-  />
+    <!--  Main Article List -->
+    <ArticleList
+      :articles="articles"
+      :is-loading="isLoading"
+      :error="error"
+      :load-more-error="loadMoreError"
+      :all-loaded="allLoaded"
+      :bookmarked-ids="bookmarkedIds"
+      :is-showing-bookmarks="showOnlyBookmarks"
+      :is-random-order="isRandomized"
+      @clear-filters="clearFilters"
+      @reset-order="resetOrder"
+      @load-more="handleLoadMore"
+      @toggle-bookmark="toggleBookmark"
+    />
+  </div>
 </template>
 
 <style scoped>
-/* Add any component-specific styles if needed */
+/* Intro sentence: the brand's 28px/300 on desktop, tightened to 20px on
+   phones so the first post title reaches the first screen. */
+.intro-text {
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 300;
+  letter-spacing: -0.035em;
+}
+@media (min-width: 62rem) {
+  .intro-text {
+    font-size: 28px;
+    line-height: 1.2;
+    letter-spacing: -0.05em;
+  }
+}
 </style>

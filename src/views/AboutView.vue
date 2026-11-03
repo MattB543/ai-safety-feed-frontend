@@ -1,30 +1,32 @@
 <template>
-  <div class="max-w-[980px] mx-auto py-8 px-4">
-    <article
-      class="bg-surface rounded-lg shadow-card border border-line p-6 md:p-8"
+  <div class="mx-auto max-w-narrow pt-10 lg:pt-14">
+    <h1 class="type-h1 -ml-1 text-ink">About the AI Safety Feed</h1>
+    <p class="type-h2 mt-8 max-w-[680px] text-ink lg:mt-10">
+      A central hub for
+      <span class="text-accent">high-signal AI safety content</span>, so the
+      community spends less time searching and more time thinking.
+    </p>
+
+    <!-- Image Grid -->
+    <div
+      class="about-banner mt-10 mb-12 grid grid-cols-1 overflow-hidden rounded-lg shadow-card sm:grid-cols-2 lg:mt-14 lg:mb-14 lg:grid-cols-3"
+      aria-hidden="true"
     >
-      <!-- Image Grid -->
-      <div
-        class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 mb-6 rounded-lg overflow-hidden"
-      >
-        <img
-          v-for="(image, index) in selectedImages"
-          :key="index"
-          :src="image"
-          alt="AI Safety Feed Banner"
-          width="400"
-          height="300"
-          class="w-full h-auto"
-        />
-      </div>
+      <img
+        v-for="(image, index) in selectedImages"
+        :key="index"
+        :src="image"
+        alt="AI Safety Feed Banner"
+        width="400"
+        height="300"
+        class="h-auto w-full"
+      />
+    </div>
 
-      <h2 class="font-display text-2xl font-semibold text-ink mb-6">
-        About the AI Safety Feed
-      </h2>
-
-      <section class="mb-6">
-        <h3 class="text-lg font-semibold text-ink mb-2">The Challenge</h3>
-        <p class="text-ink-2">
+    <article class="about-prose max-w-[680px]">
+      <section>
+        <h2>The challenge</h2>
+        <p>
           Keeping up with AI safety is difficult. Important research,
           discussions, and ideas are scattered across forums (LessWrong,
           Alignment Forum, EA Forum), blogs, newsletters, and more. Finding the
@@ -32,9 +34,9 @@
         </p>
       </section>
 
-      <section class="mb-6">
-        <h3 class="text-lg font-semibold text-ink mb-2">Our Solution</h3>
-        <p class="text-ink-2">
+      <section>
+        <h2>Our solution</h2>
+        <p>
           The <strong>AI Safety Feed</strong> is a web application designed to
           be a central hub for high-signal AI safety content. We aim to save
           researchers, policymakers, and the community valuable time by
@@ -42,9 +44,9 @@
         </p>
       </section>
 
-      <section class="mb-6">
-        <h3 class="text-lg font-semibold text-ink mb-2">How it Works (V1)</h3>
-        <ol class="list-decimal space-y-3 pl-6 text-ink-2">
+      <section>
+        <h2>How it works (V1)</h2>
+        <ol class="list-decimal space-y-3 pl-6">
           <li>
             <strong>Aggregation:</strong> We currently crawl key sources (LW,
             AF, EAF, select newsletters) to gather recent, highly-engaged
@@ -75,23 +77,23 @@
         </ol>
       </section>
 
-      <section class="mb-6">
-        <h3 class="text-lg font-semibold text-ink mb-2">Impact &amp; Vision</h3>
-        <p class="text-ink-2 mb-4">
+      <section>
+        <h2>Impact and vision</h2>
+        <p>
           We want this feed to become an indispensable tool for the AI safety
           community, significantly reducing the time spent searching and
           increasing the time spent thinking and engaging with critical ideas.
         </p>
-        <p class="text-ink-2">
+        <p>
           Future plans include adding more sources (arXiv, Substack, etc.),
           improving search capabilities (semantic search), and potentially
           adding features like email digests.
         </p>
       </section>
 
-      <section class="mb-6">
-        <h3 class="text-lg font-semibold text-ink mb-2">Get Involved</h3>
-        <p class="text-ink-2">
+      <section>
+        <h2>Get involved</h2>
+        <p>
           This project offers opportunities to work with modern web
           technologies, LLM integration, data processing, and contribute
           directly to a tool supporting the AI safety ecosystem. Join our
@@ -99,9 +101,9 @@
         </p>
       </section>
 
-      <section class="mb-6">
-        <h3 class="text-lg font-semibold text-ink mb-2">Technology Stack</h3>
-        <ul class="list-disc space-y-1 pl-6 text-ink-2">
+      <section>
+        <h2>Technology stack</h2>
+        <ul class="list-disc space-y-1 pl-6">
           <li><strong>Frontend:</strong> Vue.js 3, Tailwind CSS, Naive UI</li>
           <li><strong>Backend:</strong> Node.js, Express.js</li>
           <li><strong>Database:</strong> PostgreSQL with pgvector</li>
@@ -111,19 +113,17 @@
     </article>
 
     <!-- Action Links Section -->
-    <div
-      class="mt-8 flex items-center justify-center flex-wrap gap-3 clear-both"
-    >
+    <div class="mt-12 flex flex-wrap items-center gap-3 lg:mt-14">
       <!-- Submit Content Button -->
       <a
         href="https://forms.gle/Kgy2xe6m7Y32nqKv7"
         target="_blank"
-        class="btn-secondary"
+        class="btn-primary"
         aria-label="Submit Content"
         title="Submit Content"
       >
-        <CirclePlus class="h-4 w-4" stroke-width="2" />
-        Submit Content
+        <CirclePlus class="h-4 w-4" stroke-width="1.5" />
+        Submit content
       </a>
 
       <!-- Feedback Button -->
@@ -134,7 +134,7 @@
         aria-label="Provide Feedback"
         title="Provide Feedback"
       >
-        Share Feedback
+        Share feedback
       </a>
 
       <!-- Discord Icon -->
@@ -145,7 +145,7 @@
         aria-label="Join Discord"
         title="Join Discord"
       >
-        <DiscordIcon class="mr-1 h-4 w-4" />
+        <DiscordIcon class="h-4 w-4" />
         Join Discord
       </a>
     </div>
@@ -196,5 +196,49 @@ onMounted(() => {
 </script>
 
 <style scoped>
-/* Add any component-specific styles here if needed */
+/* Teal duotone for the (orange) banner illustrations: the image keeps its
+   light/dark structure, the colour comes from the brand teals behind it. */
+.about-banner {
+  isolation: isolate;
+  background: linear-gradient(135deg, #0f5858 0%, #094141 55%, #04292a 100%);
+}
+.about-banner img {
+  filter: grayscale(1) contrast(1.15) brightness(0.9);
+  mix-blend-mode: luminosity;
+  opacity: 0.9;
+}
+/* Prose on the page ground, as on aisafety.com's About page: light 22px
+   section titles, grey-teal paragraphs, white emphasis. */
+.about-prose section + section {
+  margin-top: 40px;
+}
+.about-prose h2 {
+  margin-bottom: 12px;
+  color: var(--color-ink);
+  font-size: 20px;
+  line-height: 1.3;
+  font-weight: 300;
+  letter-spacing: -0.04em;
+}
+.about-prose p,
+.about-prose li {
+  color: var(--color-ink-2);
+}
+.about-prose p + p {
+  margin-top: 16px;
+}
+.about-prose strong {
+  color: var(--color-ink);
+  font-weight: 600;
+}
+.about-prose li::marker {
+  color: var(--color-ink-3);
+}
+@media (min-width: 62rem) {
+  .about-prose h2 {
+    font-size: 22px;
+    line-height: 1.25;
+    letter-spacing: -0.05em;
+  }
+}
 </style>

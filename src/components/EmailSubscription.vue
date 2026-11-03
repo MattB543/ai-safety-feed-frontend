@@ -1,15 +1,14 @@
 <template>
-  <div
-    class="bg-surface border border-line shadow-card rounded-lg p-6 md:p-8 max-w-[980px] mx-auto"
-  >
+  <div class="card max-w-[680px] p-6 lg:p-10">
     <!-- Loading/Error state for filter options -->
     <div v-if="isLoadingFilters" class="text-center py-6">
       <n-spin size="medium" />
-      <p class="text-sm text-ink-3 mt-2">Loading filter options...</p>
+      <p class="mt-3 text-small text-ink-2">Loading filter options…</p>
     </div>
     <div
       v-else-if="apiError && !isLoadingFilters"
-      class="rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-center text-sm text-danger"
+      role="alert"
+      class="rounded-lg border border-danger/30 bg-danger-soft px-6 py-4 text-center text-small text-danger"
     >
       Error loading filter options: {{ apiError }}
     </div>
@@ -18,7 +17,7 @@
     <NForm v-else @submit.prevent="handleSubscribe" class="space-y-4">
       <!-- Digest Settings Section -->
       <div>
-        <h3 class="text-lg font-semibold text-ink mb-8">Digest settings</h3>
+        <h2 class="type-h3 mb-8 text-ink">Digest settings</h2>
 
         <!-- Frequency Selector (Button + Popover) -->
         <NFormItem label="Frequency" required>
@@ -28,10 +27,10 @@
             :style="{ width: '150px' }"
           >
             <template #trigger>
-              <button type="button" :disabled="isLoading" class="btn-secondary">
+              <button type="button" :disabled="isLoading" class="filter-pill">
                 {{ frequency === "daily" ? "Daily" : "Weekly" }}
                 <svg
-                  class="h-4 w-4 text-ink-3"
+                  class="h-4 w-4"
                   xmlns="http://www.w3.org/2000/svg"
                   width="1em"
                   height="1em"
@@ -48,7 +47,7 @@
                 </svg>
               </button>
             </template>
-            <div class="p-2">
+            <div class="p-4">
               <NRadioGroup v-model:value="frequency" name="frequency-group">
                 <NSpace vertical>
                   <NRadio
@@ -73,7 +72,7 @@
               @update-sources="handleUpdateSources"
               :disabled="isLoading"
             />
-            <p v-if="!isLoadingFilters" class="text-xs text-ink-3 mt-2">
+            <p v-if="!isLoadingFilters" class="mt-2 text-xs text-ink-3">
               {{ sourceSelectionHint }}
             </p>
           </div>
@@ -88,7 +87,7 @@
               @update-tags="handleUpdateTags"
               :disabled="isLoading"
             />
-            <p v-if="!isLoadingFilters" class="text-xs text-ink-3 mt-2">
+            <p v-if="!isLoadingFilters" class="mt-2 text-xs text-ink-3">
               {{ tagSelectionHint }}
             </p>
           </div>
@@ -96,7 +95,7 @@
       </div>
 
       <!-- Email Input & Subscribe Button Row -->
-      <div class="flex items-end space-x-2 mt-4">
+      <div class="mt-4 flex flex-col gap-2 sm:flex-row sm:items-end">
         <NFormItem
           path="email"
           label="Email Address"
