@@ -1,4 +1,5 @@
 import { ref, onMounted, watch } from "vue";
+import { API_BASE_URL } from "../api";
 
 export function useArticles() {
   // --- State ---
@@ -30,9 +31,6 @@ export function useArticles() {
   const bookmarkedIds = ref(new Set());
   const showOnlyBookmarks = ref(false); // The toggle state
   const BOOKMARK_STORAGE_KEY = "bookmarkedArticleIds";
-
-  const API_BASE_URL =
-    import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
   // --- Bookmark Persistence ---
   function loadBookmarksFromLocalStorage() {

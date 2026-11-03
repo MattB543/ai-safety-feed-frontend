@@ -181,10 +181,7 @@
 <script setup>
 import { Download, ArrowLeft, Rss, Book, ApiApp } from "@vicons/tabler";
 import DiscordIcon from "../components/icons/DiscordIcon.vue";
-
-// Get API base URL from environment or use default
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
+import { API_BASE_URL } from "../api";
 </script>
 
 <style scoped>

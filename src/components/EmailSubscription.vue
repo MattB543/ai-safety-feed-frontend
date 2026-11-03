@@ -142,10 +142,9 @@ import {
 // Import the filter components
 import SourceFilters from "./SourceFilters.vue";
 import TagFilters from "./TagFilters.vue";
+import { API_BASE_URL } from "../api";
 
 const message = useMessage();
-const API_BASE_URL =
-  import.meta.env.VITE_API_BASE_URL || "http://localhost:8000";
 
 // --- Local State for this Form ---
 const email = ref<string | null>(null);

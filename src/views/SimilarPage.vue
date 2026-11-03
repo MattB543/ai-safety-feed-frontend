@@ -69,9 +69,7 @@ import { useRoute } from "vue-router"; // <-- Import useRoute
 import ArticleCard from "../components/ArticleCard.vue";
 import { NSpin } from "naive-ui";
 import { useArticles } from "../composables/useArticles"; // Import useArticles
-
-// Define API_BASE_URL from environment variables
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import { API_BASE_URL } from "../api";
 
 // Get route object
 const route = useRoute();
