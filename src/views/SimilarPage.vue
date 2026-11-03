@@ -218,7 +218,6 @@ useHead(
     };
   })
 );
-
 </script>
 
 <style scoped>
