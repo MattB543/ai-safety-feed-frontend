@@ -9,8 +9,6 @@ export default [
       "dist/**",
       "dist-preview/**",
       "node_modules/**",
-      // The only TypeScript SFC; the repo has no TS-aware parser installed.
-      "src/components/EmailSubscription.vue",
     ],
   },
   js.configs.recommended,

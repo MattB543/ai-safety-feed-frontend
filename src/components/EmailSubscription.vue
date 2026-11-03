@@ -14,7 +14,7 @@
     </div>
 
     <!-- Form shown only when filter options are loaded -->
-    <NForm v-else @submit.prevent="handleSubscribe" class="space-y-4">
+    <NForm v-else class="space-y-4" @submit.prevent="handleSubscribe">
       <!-- Digest Settings Section -->
       <div>
         <h2 class="type-h3 mb-8 text-ink">Digest settings</h2>
@@ -69,8 +69,8 @@
               :available-sources="availableSourcesData"
               :active-sources="localActiveSources"
               :counts="sourceCountsData"
-              @update-sources="handleUpdateSources"
               :disabled="isLoading"
+              @update-sources="handleUpdateSources"
             />
             <p v-if="!isLoadingFilters" class="mt-2 text-xs text-ink-3">
               {{ sourceSelectionHint }}
@@ -84,8 +84,8 @@
             <TagFilters
               :available-tags="availableTagsData"
               :active-tags="localActiveTags"
-              @update-tags="handleUpdateTags"
               :disabled="isLoading"
+              @update-tags="handleUpdateTags"
             />
             <p v-if="!isLoadingFilters" class="mt-2 text-xs text-ink-3">
               {{ tagSelectionHint }}
@@ -125,7 +125,7 @@
   </div>
 </template>
 
-<script setup lang="ts">
+<script setup>
 import { ref, computed, onMounted } from "vue";
 import {
   NForm,
@@ -142,16 +142,16 @@ import {
 // Import the filter components
 import SourceFilters from "./SourceFilters.vue";
 import TagFilters from "./TagFilters.vue";
-import { API_BASE_URL } from "../api";
+import { getJson, postJson } from "../api";
 
 const message = useMessage();
 
 // --- Local State for this Form ---
-const email = ref<string | null>(null);
-const frequency = ref<"daily" | "weekly">("weekly"); // Default remains weekly
+const email = ref(null);
+const frequency = ref("weekly"); // "daily" | "weekly"
 const isLoading = ref(false);
 const isLoadingFilters = ref(true);
-const apiError = ref<string | null>(null);
+const apiError = ref(null);
 
 // Options for Frequency dropdown
 const frequencyOptions = [
@@ -160,37 +160,33 @@ const frequencyOptions = [
 ];
 
 // --- Local State for Selected Filters ---
-const localActiveSources = ref<string[]>([]);
-const localActiveTags = ref<string[]>([]);
+const localActiveSources = ref([]);
+const localActiveTags = ref([]);
 
 // --- State for Available Filter Options ---
-const availableSourcesData = ref<string[]>([]);
-const sourceCountsData = ref<{ [key: string]: number }>({});
-const availableTagsData = ref<Array<{ tag: string; post_count: number }>>([]);
+const availableSourcesData = ref([]); // string[]
+const sourceCountsData = ref({}); // { [source]: count }
+const availableTagsData = ref([]); // Array<{ tag, post_count }>
 
 // --- Fetch Available Filter Options ---
 async function fetchFilterOptions() {
   isLoadingFilters.value = true;
   apiError.value = null;
   try {
-    // Fetch sources and counts (unfiltered)
-    const sourcesResponse = await fetch(`${API_BASE_URL}/api/source-stats`);
-    if (!sourcesResponse.ok) throw new Error("Failed to load sources");
-    const sourcesStats = await sourcesResponse.json();
-    availableSourcesData.value = sourcesStats.map((s: any) => s.source_type);
+    // Sources (unfiltered counts) and tags, in parallel
+    const [sourcesStats, tags] = await Promise.all([
+      getJson("/api/source-stats"),
+      getJson("/api/tags"),
+    ]);
+    availableSourcesData.value = sourcesStats.map((s) => s.source_type);
     sourceCountsData.value = Object.fromEntries(
-      sourcesStats.map((s: any) => [s.source_type, s.count])
+      sourcesStats.map((s) => [s.source_type, s.count])
     );
-    // Initialize local sources to "all" after fetching
+    availableTagsData.value = tags;
+    // Initialize local selections to "all" after fetching
     localActiveSources.value = [...availableSourcesData.value];
-
-    // Fetch tags and counts
-    const tagsResponse = await fetch(`${API_BASE_URL}/api/tags`);
-    if (!tagsResponse.ok) throw new Error("Failed to load tags");
-    availableTagsData.value = await tagsResponse.json();
-    // Initialize local tags to "all" after fetching
-    localActiveTags.value = availableTagsData.value.map((t: any) => t.tag);
-  } catch (error: any) {
+    localActiveTags.value = tags.map((t) => t.tag);
+  } catch (error) {
     console.error("Failed to fetch filter options:", error);
     apiError.value = error.message || "Could not load filter options.";
     message.error(apiError.value);
@@ -211,11 +207,11 @@ onMounted(() => {
 
 // --- Event Handlers for Filter Components ---
 // These update the *local* state refs
-const handleUpdateSources = (newSources: string[]) => {
+const handleUpdateSources = (newSources) => {
   localActiveSources.value = newSources;
 };
 
-const handleUpdateTags = (newTags: string[]) => {
+const handleUpdateTags = (newTags) => {
   localActiveTags.value = newTags;
 };
 
@@ -245,11 +241,18 @@ const tagSelectionHint = computed(() => {
 });
 
 // --- Package Filters for API ---
-// Reads from the local state refs
+// An empty list means "no filter" to the digest, so "everything selected" is
+// sent as [] and sources/tags added later still reach the subscriber.
+const selectedOrAll = (selected, all) =>
+  all.length > 0 && all.every((x) => selected.includes(x)) ? [] : selected;
+
 const filtersForApi = computed(() => ({
   searchTerm: null, // No search term input in this form
-  sources: localActiveSources.value,
-  tags: localActiveTags.value,
+  sources: selectedOrAll(localActiveSources.value, availableSourcesData.value),
+  tags: selectedOrAll(
+    localActiveTags.value,
+    availableTagsData.value.map((t) => t.tag)
+  ),
 }));
 
 // --- Implement handleSubscribe ---
@@ -263,34 +266,18 @@ const handleSubscribe = async () => {
   isLoading.value = true;
 
   try {
-    const response = await fetch(`${API_BASE_URL}/api/subscribe`, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({
-        email: email.value,
-        frequency: frequency.value,
-        filters: filtersForApi.value, // Send the locally configured filters
-      }),
+    // postJson throws with the backend's error message on a non-2xx status
+    const responseData = await postJson("/api/subscribe", {
+      email: email.value,
+      frequency: frequency.value,
+      filters: filtersForApi.value, // Send the locally configured filters
     });
 
-    const responseData = await response.json(); // Try parsing JSON regardless of status
-
-    if (!response.ok) {
-      // Use error message from backend if available, otherwise use status
-      throw new Error(
-        responseData?.error ||
-          responseData?.message ||
-          `Subscription failed with status ${response.status}`
-      );
-    }
-
-    message.success(responseData.message || "Subscription successful!");
+    message.success(responseData?.message || "Subscription successful!");
     email.value = null; // Clear email on success
     // Reset local filters to default "all" state? Optional, depends on desired UX.
     // fetchFilterOptions(); // Or refetch to reset filters to default 'all'
-  } catch (error: any) {
+  } catch (error) {
     message.error(
       error.message || "An unexpected error occurred during subscription."
     );
