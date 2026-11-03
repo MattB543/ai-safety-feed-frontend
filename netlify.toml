@@ -12,7 +12,15 @@
   status = 200
   force = true
 
-# SPA redirect rule
+# The backend renders the sitemap (every post's /similar page); serve it from
+# this domain so robots.txt can point at it.
+[[redirects]]
+  from = "/sitemap.xml"
+  to = "https://ai-safety-feed-backend.onrender.com/sitemap.xml"
+  status = 200
+  force = true
+
+# SPA redirect rule (keep last)
 [[redirects]]
   from = "/*"
   to = "/index.html"
