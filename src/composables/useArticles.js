@@ -1,131 +1,175 @@
-import { ref, onMounted, watch } from "vue";
-import { API_BASE_URL } from "../api";
+import { ref, computed, onMounted, watch } from "vue";
+import { useRoute, useRouter } from "vue-router";
+import { getJson } from "../api";
+import { useBookmarks } from "./useBookmarks";
+
+const PAGE_SIZE = 50;
+// Novelty filter bucket (1-5) -> minimum novelty_score. 1 means no minimum.
+const NOVELTY_MIN_BY_BUCKET = { 2: 21, 3: 41, 4: 71, 5: 91 };
+
+// Feed filters live in the URL so a filtered view can be shared or linked to
+// (the email digest's "see all" link does):
+//   /?q=<search>&source=<name>&source=<name>&tag=<tag>&tag=<tag>&novelty=<1-5>
+// Every key is optional; a missing source/tag means "all".
+const FILTER_KEYS = ["q", "source", "tag", "novelty"];
+
+// A route.query value is a string, an array (repeated key) or null.
+function queryList(v) {
+  return (Array.isArray(v) ? v : [v]).filter(
+    (s) => typeof s === "string" && s !== ""
+  );
+}
+
+function queryString(v) {
+  return queryList(v)[0] ?? "";
+}
+
+function queryNovelty(v) {
+  const n = Number(queryString(v));
+  return Number.isInteger(n) && n >= 1 && n <= 5 ? n : null;
+}
+
+// [] when the selection covers every option, so "all" is never spelled out in
+// the URL or the request (new sources/tags and untagged posts then show up).
+function narrowSelection(selected, all) {
+  const uniq = [...new Set(selected)];
+  return all.length > 0 && all.every((x) => uniq.includes(x)) ? [] : uniq;
+}
 
 export function useArticles() {
+  const route = useRoute();
+  const router = useRouter();
+  const {
+    bookmarkedIds,
+    toggleBookmark: toggleSaved,
+    fetchBookmarkedPosts,
+  } = useBookmarks();
+
   // --- State ---
   const articles = ref([]); // Holds the *currently displayed* articles (either normal feed or bookmarks)
   const isLoading = ref(true);
   const error = ref(null);
   const loadMoreError = ref(null);
-  const activeSources = ref([]);
-  const availableSources = ref([]);
-  const sourceCounts = ref({});
   const allAvailableSources = ref([]);
   const allSourceCounts = ref({});
-  const searchTerm = ref("");
-  const queryTerm = ref("");
-  const availableTags = ref([]);
-  const activeTags = ref([]);
-  const minNovelty = ref(null);
-  const pageSize = 50;
+  const availableTags = ref([]); // Array<{ tag, post_count }>
   const offset = ref(0);
   const allLoaded = ref(false); // Tracks pagination for the *normal* feed
-  const abortController = ref(null);
-  const isInitializing = ref(true);
+  let abortController = null;
   // Feed order: "date" (paginated) or "random" (one random batch, no paging,
-  // because appending date-ordered pages after a random page would mix orders
-  // and the API has no stable random cursor).
+  // because appending another RANDOM() page would repeat and mix posts).
   const orderBy = ref("date");
-
-  // --- Bookmark State ---
-  const bookmarkedIds = ref(new Set());
   const showOnlyBookmarks = ref(false); // The toggle state
-  const BOOKMARK_STORAGE_KEY = "bookmarkedArticleIds";
 
-  // --- Bookmark Persistence ---
-  function loadBookmarksFromLocalStorage() {
-    try {
-      const storedBookmarks = localStorage.getItem(BOOKMARK_STORAGE_KEY);
-      if (storedBookmarks) {
-        const parsedIds = JSON.parse(storedBookmarks);
-        if (Array.isArray(parsedIds)) {
-          bookmarkedIds.value = new Set(parsedIds);
-        } else {
-          console.warn("Invalid bookmark data found in localStorage.");
-          localStorage.removeItem(BOOKMARK_STORAGE_KEY);
-        }
-      }
-    } catch (e) {
-      console.error("Failed to load bookmarks from localStorage:", e);
-    }
+  // --- Filters: read from and written to route.query ---
+  const queryTerm = computed({
+    get: () => queryString(route.query.q),
+    set: (v) => writeFilters({ q: v.trim() }),
+  });
+  const selectedSources = computed(() => queryList(route.query.source)); // [] = all
+  const selectedTags = computed(() => queryList(route.query.tag)); // [] = all
+  const minNovelty = computed({
+    get: () => queryNovelty(route.query.novelty),
+    set: (v) => writeFilters({ novelty: v }),
+  });
+
+  // What the filter popovers show as checked: everything when unfiltered.
+  const activeSources = computed(() =>
+    selectedSources.value.length
+      ? selectedSources.value
+      : allAvailableSources.value
+  );
+  const activeTags = computed(() =>
+    selectedTags.value.length
+      ? selectedTags.value
+      : availableTags.value.map((t) => t.tag)
+  );
+  const hasFilters = computed(
+    () =>
+      queryTerm.value !== "" ||
+      selectedSources.value.length > 0 ||
+      selectedTags.value.length > 0 ||
+      minNovelty.value !== null
+  );
+
+  // The search box text; committed to queryTerm on submit.
+  const searchTerm = ref(queryTerm.value);
+  watch(queryTerm, (v) => {
+    searchTerm.value = v;
+  });
+
+  // router.replace lands asynchronously, so a second write in the same tick
+  // (e.g. "Clear filters" also emptying the search box, which re-submits the
+  // search) must build on the first one, not on the stale route.query.
+  let pendingQuery = null;
+
+  function writeFilters(patch) {
+    const base = pendingQuery ?? route.query;
+    const f = {
+      q: queryString(base.q),
+      source: queryList(base.source),
+      tag: queryList(base.tag),
+      novelty: queryNovelty(base.novelty),
+      ...patch,
+    };
+    // Keep any unrelated params (e.g. utm_*) untouched.
+    const query = Object.fromEntries(
+      Object.entries(base).filter(([k]) => !FILTER_KEYS.includes(k))
+    );
+    if (f.q) query.q = f.q;
+    if (f.source.length) query.source = f.source;
+    if (f.tag.length) query.tag = f.tag;
+    if (f.novelty !== null) query.novelty = String(f.novelty);
+    pendingQuery = query;
+    router.replace({ query }).finally(() => {
+      if (pendingQuery === query) pendingQuery = null;
+    });
   }
 
-  function saveBookmarksToLocalStorage() {
-    try {
-      const idsToSave = Array.from(bookmarkedIds.value);
-      localStorage.setItem(BOOKMARK_STORAGE_KEY, JSON.stringify(idsToSave));
-    } catch (e) {
-      console.error("Failed to save bookmarks to localStorage:", e);
+  function updateActiveSources(newSources) {
+    writeFilters({
+      source: narrowSelection(newSources, allAvailableSources.value),
+    });
+  }
+
+  function updateActiveTags(newTags) {
+    writeFilters({
+      tag: narrowSelection(
+        newTags,
+        availableTags.value.map((t) => t.tag)
+      ),
+    });
+  }
+
+  function clearFilters() {
+    const filtersChange = hasFilters.value;
+    showOnlyBookmarks.value = false;
+    searchTerm.value = "";
+    if (filtersChange) {
+      writeFilters({ q: "", source: [], tag: [], novelty: null });
+    } else if (orderBy.value === "random") {
+      // No filter watcher fires, so return to date order explicitly.
+      resetOrder();
     }
   }
 
   // --- Toggle Bookmark ---
   function toggleBookmark(articleId) {
-    const currentBookmarks = bookmarkedIds.value;
-    if (currentBookmarks.has(articleId)) {
-      currentBookmarks.delete(articleId);
-    } else {
-      currentBookmarks.add(articleId);
-    }
-    bookmarkedIds.value = new Set(currentBookmarks); // Trigger reactivity
-    saveBookmarksToLocalStorage(); // Save immediately
-
-    // *** If currently showing bookmarks, refetch the list to reflect the change ***
+    toggleSaved(articleId);
+    // If currently showing bookmarks, refetch the list to reflect the change
     if (showOnlyBookmarks.value) {
-      fetchBookmarkedArticles(); // Call the dedicated fetch function
+      fetchBookmarkedArticles();
     }
   }
 
-  // --- Metadata Fetching (Unchanged) ---
-  async function fetchSourceStats() {
-    // ... (keep existing implementation)
+  // --- Metadata Fetching (unfiltered counts for the filter popovers) ---
+  async function fetchAllSourceStats() {
     try {
-      let url = `${API_BASE_URL}/api/source-stats`;
-      const params = new URLSearchParams();
-      // Only apply filters if *not* showing bookmarks
-      if (!showOnlyBookmarks.value) {
-        if (queryTerm.value) params.append("search", queryTerm.value);
-        if (activeTags.value.length)
-          params.append("tags", activeTags.value.join(","));
-      }
-      const queryString = params.toString();
-      if (queryString) url += `?${queryString}`;
-
-      const response = await fetch(url);
-      if (!response.ok)
-        throw new Error(`HTTP error! status: ${response.status}`);
-      const stats = await response.json();
-      availableSources.value = stats.map((s) => s.source_type);
-      sourceCounts.value = Object.fromEntries(
+      const stats = await getJson("/api/source-stats");
+      allAvailableSources.value = stats.map((s) => s.source_type);
+      allSourceCounts.value = Object.fromEntries(
         stats.map((s) => [s.source_type, s.count])
       );
-    } catch (e) {
-      console.error("Failed to load source stats", e);
-      // Avoid overwriting main error if possible, or use a separate error state
-      // error.value = "Failed to load source statistics.";
-      availableSources.value = [];
-      sourceCounts.value = {};
-    }
-  }
-
-  async function fetchAllSourceStats() {
-    // ... (keep existing implementation)
-    const isInitialSourceLoad = allAvailableSources.value.length === 0;
-    try {
-      let url = `${API_BASE_URL}/api/source-stats`; // Fetch unfiltered stats always
-      const response = await fetch(url);
-      if (!response.ok)
-        throw new Error(`HTTP error! status: ${response.status}`);
-      const allStats = await response.json();
-      const currentAllSources = allStats.map((s) => s.source_type);
-      allAvailableSources.value = currentAllSources;
-      allSourceCounts.value = Object.fromEntries(
-        allStats.map((s) => [s.source_type, s.count])
-      );
-      // Initialize activeSources only on the very first successful load
-      if (isInitialSourceLoad && currentAllSources.length > 0) {
-        activeSources.value = [...currentAllSources];
-      }
     } catch (e) {
       console.error("Failed to load ALL source stats", e);
       allAvailableSources.value = [];
@@ -134,24 +178,30 @@ export function useArticles() {
   }
 
   async function fetchAvailableTags() {
-    // ... (keep existing implementation)
     try {
-      const rows = await fetch(`${API_BASE_URL}/api/tags`).then((r) =>
-        r.json()
-      );
-      availableTags.value = rows;
-      // Initialize activeTags only if currently empty and not showing bookmarks
-      if (activeTags.value.length === 0 && !showOnlyBookmarks.value) {
-        activeTags.value = rows.map((r) => r.tag);
-      }
+      availableTags.value = await getJson("/api/tags");
     } catch (e) {
       console.error("Failed to load tags", e);
-      // error.value = "Failed to load tags list.";
     }
   }
 
+  // GET /api/v1/posts params for the current filters, order and offset.
+  function feedParams() {
+    const params = new URLSearchParams();
+    if (queryTerm.value) params.append("search", queryTerm.value);
+    // Repeated keys, never comma-joined: "80,000 Hours Podcast" is one source.
+    selectedSources.value.forEach((s) => params.append("source_type", s));
+    selectedTags.value.forEach((t) => params.append("tags", t));
+    const noveltyMin = NOVELTY_MIN_BY_BUCKET[minNovelty.value];
+    if (noveltyMin) params.append("novelty_min", String(noveltyMin));
+    params.append("sort", orderBy.value === "random" ? "random" : "newest");
+    params.append("limit", String(PAGE_SIZE));
+    params.append("offset", String(offset.value));
+    return params;
+  }
+
   // --- Fetch Normal Articles (Paginated/Filtered) ---
-  async function fetchArticles(options) {
+  async function fetchArticles({ append = false } = {}) {
     loadMoreError.value = null;
 
     // If showing bookmarks, do nothing here
@@ -159,65 +209,37 @@ export function useArticles() {
       return;
     }
 
-    if (abortController.value) {
-      abortController.value.abort();
-    }
+    abortController?.abort();
     const controller = new AbortController();
-    abortController.value = controller;
+    abortController = controller;
 
     isLoading.value = true;
     // Don't clear error immediately if appending, only on new load
-    if (!options.append) {
+    if (!append) {
       error.value = null;
       offset.value = 0;
       allLoaded.value = false;
     }
 
     try {
-      let url = `${API_BASE_URL}/api/content`;
-      const params = new URLSearchParams();
+      const { data, pagination } = await getJson("/api/v1/posts", {
+        params: feedParams(),
+        signal: controller.signal,
+      });
 
-      // Build query parameters from options
-      if (options.query) params.append("search", options.query);
-      if (options.sources?.length > 0)
-        params.append("sources", options.sources.join(","));
-      if (options.tags?.length) params.append("tags", options.tags.join(","));
-      if (options.novelty !== null && typeof options.novelty === "number") {
-        params.append("novelty_bucket", options.novelty.toString());
-      }
-      params.append("limit", pageSize.toString());
-      params.append("offset", offset.value.toString());
-      if (options.orderBy) params.append("order_by", options.orderBy);
-
-      const queryString = params.toString();
-      if (queryString) url += `?${queryString}`;
-
-      const response = await fetch(url, { signal: controller.signal });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-
-      const newArticles = await response.json();
-
-      if (options.append) {
+      if (append) {
         const existingIds = new Set(articles.value.map((a) => a.id));
-        const uniqueNewArticles = newArticles.filter(
-          (a) => !existingIds.has(a.id)
-        );
-        articles.value.push(...uniqueNewArticles);
+        articles.value.push(...data.filter((a) => !existingIds.has(a.id)));
       } else {
-        articles.value = newArticles; // Replace
+        articles.value = data; // Replace
       }
 
-      offset.value += newArticles.length;
-      if (newArticles.length < pageSize || options.orderBy === "random") {
-        allLoaded.value = true;
-      }
+      offset.value += data.length;
+      allLoaded.value = !pagination.hasMore || orderBy.value === "random";
     } catch (err) {
       if (err.name !== "AbortError") {
         console.error("Error fetching articles:", err);
-        if (options.append) {
+        if (append) {
           // Keep the articles already on screen; surface a retryable message.
           loadMoreError.value = "Could not load more posts.";
         } else {
@@ -226,9 +248,9 @@ export function useArticles() {
         }
       }
     } finally {
-      if (abortController.value === controller) {
+      if (abortController === controller) {
         isLoading.value = false;
-        abortController.value = null;
+        abortController = null;
       }
     }
   }
@@ -236,10 +258,10 @@ export function useArticles() {
   // --- Fetch Bookmarked Articles (Specific IDs) ---
   async function fetchBookmarkedArticles() {
     loadMoreError.value = null; // a failed append belongs to the normal feed
-    loadMoreError.value = null; // a failed append belongs to the normal feed
-    const idsToFetch = Array.from(bookmarkedIds.value);
+    abortController?.abort();
+    abortController = null;
 
-    if (idsToFetch.length === 0) {
+    if (bookmarkedIds.value.size === 0) {
       articles.value = [];
       allLoaded.value = true; // Nothing to load
       isLoading.value = false;
@@ -247,34 +269,17 @@ export function useArticles() {
       return;
     }
 
-    if (abortController.value) {
-      abortController.value.abort();
-    }
     const controller = new AbortController();
-    abortController.value = controller;
+    abortController = controller;
 
     isLoading.value = true;
     error.value = null;
 
     try {
-      // *** Use the new backend endpoint ***
-      // Adjust URL and parameter name ('ids') as needed based on your backend implementation
-      const params = new URLSearchParams();
-      params.append("ids", idsToFetch.join(","));
-      const url = `${API_BASE_URL}/api/content/by-ids?${params.toString()}`;
-      // OR if modifying existing endpoint:
-      // const url = `${API_BASE_URL}/api/content?${params.toString()}`;
-
-      const response = await fetch(url, { signal: controller.signal });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! Status: ${response.status}`);
-      }
-
-      const bookmarkedArticles = await response.json();
-      articles.value = bookmarkedArticles; // Replace current articles
+      articles.value = await fetchBookmarkedPosts({
+        signal: controller.signal,
+      });
       allLoaded.value = true; // We fetched all requested bookmarks, no more pages
-      offset.value = bookmarkedArticles.length; // Update offset just in case
     } catch (err) {
       if (err.name !== "AbortError") {
         console.error("Error fetching bookmarked articles:", err);
@@ -283,158 +288,69 @@ export function useArticles() {
         allLoaded.value = true; // Prevent further loading attempts
       }
     } finally {
-      if (abortController.value === controller) {
+      if (abortController === controller) {
         isLoading.value = false;
-        abortController.value = null;
+        abortController = null;
       }
-    }
-  }
-
-  // --- Update Filters ---
-  function updateActiveSources(newSources) {
-    const uniqueNewSources = [...new Set(newSources)];
-    // Check if changed only if not showing bookmarks (filter doesn't apply then)
-    if (!showOnlyBookmarks.value) {
-      if (
-        uniqueNewSources.length !== activeSources.value.length ||
-        !uniqueNewSources.every((source) =>
-          activeSources.value.includes(source)
-        )
-      ) {
-        activeSources.value = uniqueNewSources;
-        // Watcher will trigger refetch
-      }
-    } else {
-      // Store the selection even if not active, so it's remembered
-      // when the user toggles bookmarks off.
-      activeSources.value = uniqueNewSources;
-    }
-  }
-
-  function updateActiveTags(newTags) {
-    const uniq = [...new Set(newTags)];
-    if (!showOnlyBookmarks.value) {
-      if (
-        uniq.length !== activeTags.value.length ||
-        !uniq.every((t) => activeTags.value.includes(t))
-      ) {
-        activeTags.value = uniq;
-        // Watcher will trigger refetch
-      }
-    } else {
-      activeTags.value = uniq;
     }
   }
 
   // --- Watchers ---
 
-  // Watcher for standard filters (query, sources, tags, novelty)
-  watch(
-    [queryTerm, activeSources, activeTags, minNovelty],
-    () => {
-      if (isInitializing.value) return;
-      // Changing filters or search always returns to date order.
-      orderBy.value = "date";
-      // *** IMPORTANT: Only trigger fetch if NOT showing bookmarks ***
-      if (!showOnlyBookmarks.value) {
-        fetchArticles({
-          append: false, // Reset list
-          query: queryTerm.value,
-          orderBy: "date", // Reset to default order on filter change
-          sources: activeSources.value,
-          tags: activeTags.value,
-          novelty: minNovelty.value,
-        });
-        fetchSourceStats(); // Update source counts based on new filters
-      }
-    },
-    { deep: true }
+  // Filters changed in the URL (popovers, search, a pasted link, the header
+  // logo). Ignored once the route leaves the feed.
+  const filterKey = computed(() =>
+    route.name === "Feed"
+      ? JSON.stringify([
+          queryTerm.value,
+          selectedSources.value,
+          selectedTags.value,
+          minNovelty.value,
+        ])
+      : null
   );
+  watch(filterKey, (key) => {
+    if (key === null) return;
+    // Changing filters or search always returns to date order.
+    orderBy.value = "date";
+    // Filters don't apply to the bookmark list; fetchArticles skips then.
+    fetchArticles();
+  });
 
   // Watcher for the bookmark toggle
   watch(showOnlyBookmarks, (isShowing) => {
-    if (isInitializing.value) return;
     orderBy.value = "date";
     if (isShowing) {
-      // Fetch only bookmarked articles
       fetchBookmarkedArticles();
-      // Optionally clear other filters visually or disable them? For now, just fetch.
     } else {
-      // Fetch normal articles with current filters
-      fetchArticles({
-        append: false, // Reset list
-        query: queryTerm.value,
-        orderBy: "date", // Or current order
-        sources: activeSources.value,
-        tags: activeTags.value,
-        novelty: minNovelty.value,
-      });
+      fetchArticles();
     }
-    // Refetch stats when toggling bookmarks on/off as filters apply differently
-    fetchSourceStats();
-    fetchAvailableTags(); // Re-evaluate active tags initialization
   });
 
-  // Watch bookmarks set itself (only for saving, fetch is handled by toggleBookmark/showOnlyBookmarks watcher)
-  // watch(bookmarkedIds, saveBookmarksToLocalStorage, { deep: true }); // Already handled in toggleBookmark
-
   // --- Initial data loading on mount ---
-  onMounted(async () => {
-    isInitializing.value = true;
-    loadBookmarksFromLocalStorage();
-    try {
-      // Fetch metadata first
-      await fetchAvailableTags();
-      await fetchAllSourceStats(); // Sets initial activeSources
-
-      // Fetch initial articles (normal feed)
-      await fetchArticles({
-        append: false,
-        query: queryTerm.value,
-        orderBy: "date",
-        sources: activeSources.value,
-        tags: activeTags.value,
-        novelty: minNovelty.value,
-      });
-    } catch (e) {
-      console.error("Error during initial mount:", e);
-      error.value = "Failed to load initial data.";
-    } finally {
-      isInitializing.value = false;
-    }
+  // Tags, source counts and the first page don't depend on each other (the
+  // filters come from the URL), so they load in parallel. The popovers show
+  // everything as selected once their lists arrive.
+  onMounted(() => {
+    fetchAvailableTags();
+    fetchAllSourceStats();
+    fetchArticles();
   });
 
   // --- Other Methods ---
 
   // Fetch Random Order - Should only apply to the normal feed
   async function fetchRandomOrder() {
-    if (showOnlyBookmarks.value) {
-      // Maybe show a notification to the user?
-      return;
-    }
+    if (showOnlyBookmarks.value) return;
     orderBy.value = "random";
-    await fetchArticles({
-      append: false,
-      query: queryTerm.value,
-      orderBy: "random",
-      sources: activeSources.value,
-      tags: activeTags.value,
-      novelty: minNovelty.value,
-    });
+    await fetchArticles();
   }
 
   // Back to the default date order with the current filters.
   async function resetOrder() {
     orderBy.value = "date";
     if (showOnlyBookmarks.value) return;
-    await fetchArticles({
-      append: false,
-      query: queryTerm.value,
-      orderBy: "date",
-      sources: activeSources.value,
-      tags: activeTags.value,
-      novelty: minNovelty.value,
-    });
+    await fetchArticles();
   }
 
   // Load More Articles - Only for the normal, date-ordered feed. Random order
@@ -446,42 +362,29 @@ export function useArticles() {
       !showOnlyBookmarks.value &&
       orderBy.value === "date"
     ) {
-      fetchArticles({
-        append: true, // Append results
-        query: queryTerm.value,
-        orderBy: "date",
-        sources: activeSources.value,
-        tags: activeTags.value,
-        novelty: minNovelty.value,
-      });
+      fetchArticles({ append: true });
     }
   }
 
-  // --- REMOVED ---
-  // const filteredArticles = computed(...)
-  // fetchArticlesUntilAllLoadedInBackground()
-  // ensureArticleLoaded() - Could be adapted for bookmarks if needed, but likely not necessary
-
-  // Return the reactive state and methods
   return {
-    articles, // Directly use this ref now
+    articles,
     isLoading,
     error,
     loadMoreError,
-    fetchArticles, // Expose if needed for manual refresh?
-    availableSources, // Still needed for filter component display
-    activeSources,
-    updateActiveSources,
-    searchTerm,
-    sourceCounts, // Still needed for filter component display
+    // Filter options and the current selection
     allAvailableSources,
     allSourceCounts,
     availableTags,
+    activeSources,
     activeTags,
+    updateActiveSources,
     updateActiveTags,
+    searchTerm,
     queryTerm,
-    allLoaded, // Reflects pagination state *only for the normal feed*
     minNovelty,
+    hasFilters,
+    clearFilters,
+    allLoaded, // Reflects pagination state *only for the normal feed*
     fetchRandomOrder,
     resetOrder,
     orderBy, // "date" | "random": the single source of truth for feed order
@@ -489,7 +392,6 @@ export function useArticles() {
     bookmarkedIds,
     showOnlyBookmarks,
     toggleBookmark,
-    // resetBookmarkFilter, // Not strictly needed if clearFilters handles it
     loadMore,
   };
 }

@@ -37,7 +37,7 @@ function dismissIntroCard() {
   }
 }
 
-// Keep useArticles logic
+// Feed state; the filters are kept in the URL query (see useArticles).
 const {
   articles,
   isLoading,
@@ -52,6 +52,8 @@ const {
   updateActiveTags,
   allLoaded,
   minNovelty,
+  hasFilters,
+  clearFilters,
   allAvailableSources,
   allSourceCounts,
   fetchRandomOrder,
@@ -63,43 +65,15 @@ const {
   loadMore,
 } = useArticles();
 
-const isFilterActive = computed(() => {
-  const allSourceNames = allAvailableSources.value;
-  const allTagNames = availableTags.value.map((t) => t.tag);
-  const sourcesAreDefault =
-    activeSources.value.length === allSourceNames.length &&
-    allSourceNames.length > 0;
-  const tagsAreDefault =
-    activeTags.value.length === allTagNames.length && allTagNames.length > 0;
-
-  return (
-    queryTerm.value.trim() !== "" ||
-    !sourcesAreDefault ||
-    !tagsAreDefault ||
-    minNovelty.value !== null ||
-    showOnlyBookmarks.value
-  );
-});
+const isFilterActive = computed(
+  () => hasFilters.value || showOnlyBookmarks.value
+);
 
 // Derived from the composable's single order state.
 const isRandomized = computed(() => orderBy.value === "random");
 
 function handleSearch() {
   queryTerm.value = searchTerm.value.trim();
-}
-
-function clearFilters() {
-  searchTerm.value = "";
-  queryTerm.value = "";
-  updateActiveSources(allAvailableSources.value);
-  updateActiveTags(availableTags.value.map((t) => t.tag));
-  minNovelty.value = null;
-  showOnlyBookmarks.value = false;
-  // If nothing above actually changed, no filter watcher fires, so return
-  // to date order explicitly.
-  if (isRandomized.value) {
-    resetOrder();
-  }
 }
 
 function requestRandomOrder() {

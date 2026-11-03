@@ -41,6 +41,9 @@ const router = createRouter({
   scrollBehavior(to, from, savedPosition) {
     if (savedPosition) {
       return savedPosition;
+    } else if (to.path === from.path) {
+      // Feed filter changes only rewrite the query string; stay put.
+      return false;
     } else {
       return { top: 0 };
     }
