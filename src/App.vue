@@ -1,8 +1,13 @@
 <script setup>
 import { NConfigProvider, NMessageProvider } from "naive-ui";
+import { useHead } from "@vueuse/head";
 import AppHeader from "./components/AppHeader.vue";
 import AppFooter from "./components/AppFooter.vue";
 import { feedDarkTheme, naiveTheme } from "./theme/naive";
+
+// Default title; pages that set their own (Similar) override it while mounted,
+// and leaving them falls back to this instead of keeping their title.
+useHead({ title: "AI Safety Feed" });
 </script>
 
 <template>
