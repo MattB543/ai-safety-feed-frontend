@@ -7,12 +7,10 @@ import { formatTagForDisplay } from "../utils/formatters";
 const props = defineProps({
   availableTags: {
     type: Array, // Array<{tag: string, post_count: number}>
-    required: true,
     default: () => [],
   },
   activeTags: {
     type: Array, // Array<string>
-    required: true,
     default: () => [],
   },
   disabled: {

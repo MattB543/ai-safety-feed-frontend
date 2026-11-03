@@ -6,17 +6,14 @@ import { Rss, ChevronDown } from "@vicons/tabler";
 const props = defineProps({
   availableSources: {
     type: Array,
-    required: true,
     default: () => [],
   },
   activeSources: {
     type: Array,
-    required: true,
     default: () => [],
   },
   counts: {
     type: Object, // { [source]: number }
-    required: true,
     default: () => ({}),
   },
   disabled: {
