@@ -1,18 +1,16 @@
 <script setup>
 import { ref, computed, watch } from "vue";
 import { NButton, NPopover, NCheckbox, NCheckboxGroup } from "naive-ui";
-import { Filter } from "@vicons/tabler";
+import { Tags, ChevronDown } from "@vicons/tabler";
 import { formatTagForDisplay } from "../utils/formatters";
 
 const props = defineProps({
   availableTags: {
     type: Array, // Array<{tag: string, post_count: number}>
-    required: true,
     default: () => [],
   },
   activeTags: {
     type: Array, // Array<string>
-    required: true,
     default: () => [],
   },
   disabled: {
@@ -72,6 +70,15 @@ const isFilterActive = computed(() => {
   );
 });
 
+// Trigger label: "Categories", or the committed selection once a filter is
+// applied ("Category: Technical ML Safety", "Categories: 3").
+const triggerLabel = computed(() => {
+  if (!isFilterActive.value) return "Categories";
+  const n = props.activeTags.length;
+  if (n === 1) return `Category: ${formatTagForDisplay(props.activeTags[0])}`;
+  return `Categories: ${n}`;
+});
+
 const totalCount = computed(() => {
   // Sum post_count from availableTags
   return props.availableTags.reduce(
@@ -80,7 +87,13 @@ const totalCount = computed(() => {
   );
 });
 
+// The API treats an empty list as "no filter", so nothing checked must not be
+// applied (it would show everything while the trigger said "…: 0").
+const isSelectionEmpty = computed(() => localSelection.value.length === 0);
+const hintId = `empty-hint-${Math.random().toString(36).slice(2, 8)}`;
+
 function commit() {
+  if (isSelectionEmpty.value) return;
   emit("update-tags", [...localSelection.value]);
   showPopover.value = false;
 }
@@ -114,49 +127,67 @@ watch(showPopover, (isShown) => {
     :show-arrow="false"
     style="padding: 0"
   >
-    <!-- Trigger button -->
+    <!-- Trigger pill -->
     <template #trigger>
       <button
         type="button"
         :disabled="disabled"
-        :class="[
-          'btn-secondary',
-          isFilterActive
-            ? 'ring-2 ring-accent border-transparent bg-accent-soft text-accent-ink'
-            : '',
-        ]"
+        :class="['filter-pill', { 'is-active': isFilterActive }]"
+        :aria-expanded="showPopover"
       >
-        <Filter class="h-4 w-4" :stroke-width="1.75" />
-        Categories
+        <Tags class="h-4 w-4" stroke-width="1.5" aria-hidden="true" />
+        <span class="max-w-[24ch] truncate">{{ triggerLabel }}</span>
+        <ChevronDown
+          class="h-4 w-4 transition-transform"
+          :class="{ 'rotate-180': showPopover }"
+          stroke-width="1.5"
+          aria-hidden="true"
+        />
       </button>
     </template>
 
     <!-- Popover content -->
-    <div class="p-3 min-w-[200px]">
+    <div class="min-w-[240px] p-5">
       <!-- "All" checkbox sits outside the scroll area, like SourceFilters -->
-      <NCheckbox v-model:checked="isAllTagsSelected" class="mb-2"
-        >All categories ({{ totalCount }})</NCheckbox
-      >
+      <NCheckbox v-model:checked="isAllTagsSelected" class="mb-3">
+        All categories
+        <span class="text-xs text-ink-2">({{ totalCount }})</span>
+      </NCheckbox>
       <NCheckboxGroup
         v-model:value="localSelection"
-        class="flex flex-col gap-2 max-h-60 overflow-y-auto"
+        class="flex max-h-72 flex-col pr-1 gap-3 overflow-y-auto"
       >
         <NCheckbox v-for="t in sortedAvailableTags" :key="t.tag" :value="t.tag">
-          {{ formatTagForDisplay(t.tag) }} ({{ t.post_count ?? 0 }})
+          {{ formatTagForDisplay(t.tag) }}
+          <span class="text-xs text-ink-2">({{ t.post_count ?? 0 }})</span>
         </NCheckbox>
       </NCheckboxGroup>
 
+      <!-- An empty selection would silently mean "all" to the API, so it
+           can't be applied. -->
+      <p
+        v-if="isSelectionEmpty"
+        :id="hintId"
+        class="mt-4 text-xs text-ink-2"
+        role="status"
+      >
+        Select at least one category.
+      </p>
+
       <!-- actions -->
-      <div class="flex gap-2 mt-4">
-        <NButton size="small" tertiary @click="cancel" style="flex: 1"
-          >Cancel</NButton
+      <div class="mt-5 flex gap-2">
+        <NButton size="small" style="flex: 1" @click="cancel">Cancel</NButton>
+        <NButton
+          size="small"
+          type="primary"
+          style="flex: 1"
+          :disabled="isSelectionEmpty"
+          :aria-describedby="isSelectionEmpty ? hintId : undefined"
+          @click="commit"
         >
-        <NButton size="small" type="primary" @click="commit" style="flex: 1">
           Apply
         </NButton>
       </div>
     </div>
   </NPopover>
 </template>
-
-<style scoped></style>

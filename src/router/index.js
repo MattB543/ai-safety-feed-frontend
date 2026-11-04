@@ -1,9 +1,6 @@
 import { createRouter, createWebHistory } from "vue-router";
-import FeedView from "../views/FeedView.vue"; // We'll create this next
-import SimilarPage from "../views/SimilarPage.vue"; // We'll create this too
-import AboutView from "../views/AboutView.vue"; // Import the new view
-import DigestView from "../views/DigestView.vue"; // Import the new Digest view
-import DataView from "../views/DataView.vue"; // Import the new Data view
+import FeedView from "../views/FeedView.vue";
+// Every other page is its own chunk, loaded on first visit.
 
 const routes = [
   {
@@ -15,22 +12,22 @@ const routes = [
     // Pass the combined slug-id as a single parameter
     path: "/similar/:slugWithId",
     name: "Similar",
-    component: SimilarPage, // Will need to parse slugWithId inside this component
+    component: () => import("../views/SimilarPage.vue"), // parses slugWithId
   },
   {
     path: "/about",
     name: "About",
-    component: AboutView,
+    component: () => import("../views/AboutView.vue"),
   },
   {
     path: "/digest", // Add the new digest route
     name: "Digest",
-    component: DigestView,
+    component: () => import("../views/DigestView.vue"),
   },
   {
     path: "/data", // Add the new data route
     name: "Data",
-    component: DataView,
+    component: () => import("../views/DataView.vue"),
   },
 ];
 
@@ -41,6 +38,9 @@ const router = createRouter({
   scrollBehavior(to, from, savedPosition) {
     if (savedPosition) {
       return savedPosition;
+    } else if (to.path === from.path) {
+      // Feed filter changes only rewrite the query string; stay put.
+      return false;
     } else {
       return { top: 0 };
     }

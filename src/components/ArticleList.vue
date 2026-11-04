@@ -35,10 +35,20 @@ const props = defineProps({
     type: Boolean,
     default: false,
   },
+  // Random order is a single batch; the end of the list says so.
+  isRandomOrder: {
+    type: Boolean,
+    default: false,
+  },
 });
 
 // --- Emits ---
-const emit = defineEmits(["clear-filters", "load-more", "toggle-bookmark"]); // Removed "show-similar"
+const emit = defineEmits([
+  "clear-filters",
+  "load-more",
+  "toggle-bookmark",
+  "reset-order",
+]); // Removed "show-similar"
 
 // --- Cold-start hint: only mention the sleeping server after a real wait ---
 const showColdStartHint = ref(false);
@@ -144,17 +154,15 @@ watch(
 </script>
 
 <template>
-  <div
-    class="mx-auto min-h-[400px] max-w-[980px] rounded-lg border border-line bg-surface shadow-card"
-  >
+  <div class="mx-auto min-h-[400px] max-w-content">
     <!-- Initial Loading State -->
     <div
       v-if="isLoading && articles.length === 0"
       class="flex min-h-[400px] flex-col items-center justify-center gap-2 px-4 py-10 text-center"
+      role="status"
     >
-      <!-- Simple CSS Spinner -->
-      <div class="spinner mb-2"></div>
-      <p class="text-base text-ink-2">Loading articles...</p>
+      <div class="spinner mb-3"></div>
+      <p class="text-small text-ink-2">Loading posts…</p>
       <p v-if="showColdStartHint" class="text-xs text-ink-3">
         The server may be waking up, this can take up to a minute.
       </p>
@@ -164,7 +172,7 @@ watch(
     <div
       v-else-if="error && articles.length === 0"
       role="alert"
-      class="mx-4 my-6 rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-danger"
+      class="rounded-lg border border-danger/30 bg-danger-soft px-6 py-4 text-small text-danger"
     >
       {{ error }}
     </div>
@@ -172,29 +180,25 @@ watch(
     <!-- No Articles/Results State -->
     <div
       v-else-if="articles.length === 0 && !isLoading"
-      class="flex min-h-[400px] flex-col items-center justify-center gap-4 px-4 py-10 text-center text-ink-2"
+      class="flex min-h-[400px] flex-col items-center justify-center gap-6 px-4 py-10 text-center text-small text-ink-2"
     >
       <p v-if="props.isShowingBookmarks">
         You haven't saved any posts yet, or none match your other active
         filters.
       </p>
-      <p v-else>No posts found. Try adjusting your search or filters.</p>
+      <p v-else>No posts match these filters.</p>
       <button
         v-if="!props.isShowingBookmarks"
-        @click="emit('clear-filters')"
         class="btn-secondary"
+        @click="emit('clear-filters')"
       >
-        Clear Filters
+        Clear filters
       </button>
     </div>
 
     <!-- Articles Feed -->
-    <ul v-else class="divide-y divide-line px-6">
-      <li
-        v-for="article in articles"
-        :key="article.id || article.source_url"
-        class="py-8 first:pt-6 last:pb-6"
-      >
+    <ul v-else class="flex flex-col gap-6 lg:gap-10">
+      <li v-for="article in articles" :key="article.id || article.source_url">
         <ArticleCard
           :article="article"
           :is-bookmarked="props.bookmarkedIds.has(article.id)"
@@ -204,8 +208,12 @@ watch(
     </ul>
 
     <!-- Loading indicator for infinite scroll -->
-    <div v-if="isLoading && articles.length > 0" class="py-4 text-center">
-      <!-- Simple CSS Spinner for load more -->
+    <div
+      v-if="isLoading && articles.length > 0"
+      class="py-8 text-center"
+      role="status"
+      aria-label="Loading more posts"
+    >
       <div class="spinner mx-auto"></div>
     </div>
 
@@ -214,10 +222,29 @@ watch(
       v-else-if="
         loadMoreError && articles.length > 0 && !props.isShowingBookmarks
       "
-      class="flex flex-col items-center gap-2 py-4 text-sm text-ink-3"
+      class="flex flex-col items-center gap-3 py-8 text-small text-ink-2"
     >
       <p>{{ loadMoreError }}</p>
       <button class="btn-secondary" @click="emit('load-more')">Retry</button>
+    </div>
+
+    <!-- End of a random batch: no more pages in random order -->
+    <div
+      v-else-if="
+        isRandomOrder &&
+        articles.length > 0 &&
+        !props.isShowingBookmarks &&
+        !isLoading
+      "
+      class="flex flex-col items-center gap-4 py-10 text-center text-small text-ink-2"
+    >
+      <p>
+        That's a random selection of {{ articles.length }} posts. Shuffle again
+        for another, or go back to the latest posts.
+      </p>
+      <button class="btn-secondary-sm" @click="emit('reset-order')">
+        Reset order
+      </button>
     </div>
 
     <!-- End of feed marker -->
@@ -228,7 +255,7 @@ watch(
         !props.isShowingBookmarks &&
         !isLoading
       "
-      class="py-6 text-center text-sm text-ink-3"
+      class="py-10 text-center text-small text-ink-2"
     >
       You have reached the end.
     </p>
@@ -244,20 +271,18 @@ watch(
 </template>
 
 <style scoped>
+/* aisafety.com spinner: a thin translucent white ring with a white head. */
 .spinner {
-  border: 4px solid rgba(0, 0, 0, 0.08);
-  width: 36px;
-  height: 36px;
+  width: 24px;
+  height: 24px;
+  border: 2px solid rgb(255 255 255 / 0.3);
+  border-top-color: #ffffff;
   border-radius: 50%;
-  border-left-color: var(--color-accent);
-  animation: spin 1s ease infinite;
+  animation: spin 0.8s linear infinite;
 }
 
 @keyframes spin {
-  0% {
-    transform: rotate(0deg);
-  }
-  100% {
+  to {
     transform: rotate(360deg);
   }
 }

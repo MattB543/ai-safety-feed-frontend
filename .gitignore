@@ -25,3 +25,7 @@ dist-ssr
 *.njsproj
 *.sln
 *.sw?
+
+# Brand reference screenshots (~36 MB); kept locally, too large for the repo
+docs/screenshots/aisafety-brand/
+docs/screenshots/aisafety-com/

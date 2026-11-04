@@ -1,47 +1,42 @@
 <template>
-  <div class="max-w-[980px] mx-auto">
+  <div class="mx-auto max-w-content pt-10 lg:pt-14">
     <!-- Section 1: Original Article -->
-    <div class="mb-12">
-      <div v-if="isLoadingOriginal" class="text-center py-10">
+    <div class="mb-14">
+      <p class="mb-4 text-small text-ink-2">Posts similar to</p>
+      <div v-if="isLoadingOriginal" class="py-10 text-center">
         <n-spin size="large" />
-        <p class="text-ink-2 mt-2">Loading Original Article...</p>
+        <p class="mt-3 text-small text-ink-2">Loading original article…</p>
       </div>
       <div
         v-else-if="errorOriginal"
-        class="rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-danger"
+        role="alert"
+        class="rounded-lg border border-danger/30 bg-danger-soft px-6 py-4 text-small text-danger"
       >
         {{ errorOriginal }}
       </div>
-      <!-- Wrap original card for consistent styling -->
-      <div
+      <ArticleCard
         v-else-if="originalArticle"
-        class="rounded-lg border border-line bg-surface shadow-card"
-      >
-        <ArticleCard
-          :article="originalArticle"
-          :hide-similar-button="true"
-          class="p-6"
-        />
-      </div>
+        :article="originalArticle"
+        :hide-similar-button="true"
+        :is-bookmarked="bookmarkedIds.has(originalArticle.id)"
+        @toggle-bookmark="toggleBookmark"
+      />
     </div>
 
     <!-- Section 2: Similar Articles -->
     <div>
-      <div class="mb-6 border-b border-line pb-2">
-        <h2 class="font-display text-2xl font-semibold text-ink">
-          Similar Posts
-        </h2>
-      </div>
+      <h2 class="type-h2 mb-6 text-ink lg:mb-8">Similar posts</h2>
 
       <!-- Loading State for Similar Articles -->
-      <div v-if="isLoadingSimilar" class="text-center py-10">
+      <div v-if="isLoadingSimilar" class="py-10 text-center">
         <n-spin size="large" />
-        <p class="text-ink-2 mt-2">Loading Similar Articles...</p>
+        <p class="mt-3 text-small text-ink-2">Loading similar articles…</p>
       </div>
       <!-- Error State for Similar Articles -->
       <div
         v-else-if="errorSimilar"
-        class="rounded-md border border-danger/30 bg-danger-soft px-4 py-3 text-danger mb-4"
+        role="alert"
+        class="mb-4 rounded-lg border border-danger/30 bg-danger-soft px-6 py-4 text-small text-danger"
       >
         {{ errorSimilar }}
       </div>
@@ -49,20 +44,17 @@
       <!-- Display List -->
       <div
         v-else-if="similarArticles.length === 0 && !isLoadingSimilar"
-        class="text-ink-2 text-center py-6"
+        class="py-6 text-center text-small text-ink-2"
       >
         No similar posts found.
       </div>
-      <ul
-        v-else
-        class="rounded-lg border border-line bg-surface shadow-card divide-y divide-line"
-      >
-        <li v-for="similar in similarArticles" :key="similar.id" class="p-6">
+      <ul v-else class="flex flex-col gap-6 lg:gap-10">
+        <li v-for="similar in similarArticles" :key="similar.id">
           <ArticleCard
             :article="similar"
             :hide-similar-button="true"
             :is-bookmarked="bookmarkedIds.has(similar.id)"
-            @toggle-bookmark="() => toggleBookmark(similar.id)"
+            @toggle-bookmark="toggleBookmark"
           />
         </li>
       </ul>
@@ -71,24 +63,18 @@
 </template>
 
 <script setup>
-import { ref, onMounted, watch, computed } from "vue";
+import { ref, watch, computed, onBeforeUnmount } from "vue";
 import { useHead } from "@vueuse/head"; // Import useHead
 import { useRoute } from "vue-router"; // <-- Import useRoute
 import ArticleCard from "../components/ArticleCard.vue";
 import { NSpin } from "naive-ui";
-import { useArticles } from "../composables/useArticles"; // Import useArticles
-
-// Define API_BASE_URL from environment variables
-const API_BASE_URL = import.meta.env.VITE_API_BASE_URL;
+import { useBookmarks } from "../composables/useBookmarks";
+import { getJson } from "../api";
 
 // Get route object
 const route = useRoute();
 
-// State for the parsed ID
-const articleId = ref(null);
-
-// --- Get bookmark state from useArticles ---
-const { bookmarkedIds, toggleBookmark } = useArticles();
+const { bookmarkedIds, toggleBookmark } = useBookmarks();
 
 // State for Original Article
 const originalArticle = ref(null);
@@ -100,63 +86,80 @@ const similarArticles = ref([]);
 const isLoadingSimilar = ref(false);
 const errorSimilar = ref(null);
 
+// Aborted when the route moves to another post (or the page unmounts), so a
+// slow response for the previous post can't overwrite the current one.
+let controller = null;
+
 // --- Fetching Functions ---
 
-async function fetchOriginalArticle(idToFetch) {
-  // <-- Use passed ID
+async function fetchOriginalArticle(idToFetch, signal) {
   isLoadingOriginal.value = true;
   errorOriginal.value = null;
   originalArticle.value = null;
-  if (!idToFetch) {
-    errorOriginal.value = "Article ID is missing.";
-    isLoadingOriginal.value = false;
-    return;
-  }
   try {
-    const response = await fetch(`${API_BASE_URL}/api/content/${idToFetch}`); // <-- Use passed ID
-    if (!response.ok) {
-      throw new Error(
-        `HTTP error! Status: ${response.status} ${response.statusText}`
-      );
-    }
-    originalArticle.value = await response.json();
+    originalArticle.value = await getJson(`/api/v1/posts/${idToFetch}`, {
+      signal,
+    });
   } catch (e) {
+    if (e.name === "AbortError") return;
     console.error("Failed to fetch original article:", e);
-    errorOriginal.value = `Failed to load original article (ID: ${idToFetch}). ${e.message}`; // <-- Use passed ID
+    errorOriginal.value = `Failed to load original article (ID: ${idToFetch}). ${e.message}`;
   } finally {
-    isLoadingOriginal.value = false;
+    if (!signal.aborted) isLoadingOriginal.value = false;
   }
 }
 
-// Fetch AI-ranked similar articles
-async function fetchSimilarArticles(idToFetch) {
-  // <-- Use passed ID
+// Nearest posts by embedding distance (up to 20)
+async function fetchSimilarArticles(idToFetch, signal) {
   isLoadingSimilar.value = true;
   errorSimilar.value = null;
   similarArticles.value = []; // Clear previous results
-  if (!idToFetch) {
-    errorSimilar.value = "Article ID is missing for similar search.";
-    isLoadingSimilar.value = false;
-    return;
-  }
   try {
-    const response = await fetch(
-      `${API_BASE_URL}/api/similar/${idToFetch}/ai?n=10` // <-- Use passed ID
-    ); // Fetch 10 AI results
-    if (!response.ok) {
-      const errorData = await response.text(); // Try to get error body
-      throw new Error(
-        `HTTP error! Status: ${response.status} ${response.statusText}. ${errorData}`
-      );
-    }
-    similarArticles.value = await response.json();
+    similarArticles.value = await getJson(`/api/similar/${idToFetch}`, {
+      signal,
+    });
   } catch (e) {
+    if (e.name === "AbortError") return;
     console.error("Failed to fetch similar articles:", e);
     errorSimilar.value = `Failed to load similar articles. ${e.message}`;
   } finally {
-    isLoadingSimilar.value = false;
+    if (!signal.aborted) isLoadingSimilar.value = false;
   }
 }
+
+// The route param is "<slug>-<id>"; the id is everything after the last dash.
+function parseId(slugWithId) {
+  if (typeof slugWithId !== "string") return null;
+  const id = Number(slugWithId.slice(slugWithId.lastIndexOf("-") + 1));
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+watch(
+  () => route.params.slugWithId,
+  (slugWithId) => {
+    controller?.abort();
+    controller = null;
+    if (slugWithId === undefined) return; // navigating away from this page
+    const id = parseId(slugWithId);
+    if (id === null) {
+      console.error("No valid article id in slugWithId:", slugWithId);
+      originalArticle.value = null;
+      similarArticles.value = [];
+      errorOriginal.value = "Invalid article ID format in URL.";
+      errorSimilar.value = "Invalid article ID format in URL.";
+      // The aborted fetches leave their spinners on; clear them here.
+      isLoadingOriginal.value = false;
+      isLoadingSimilar.value = false;
+      return;
+    }
+    controller = new AbortController();
+    fetchOriginalArticle(id, controller.signal);
+    fetchSimilarArticles(id, controller.signal);
+  },
+  { immediate: true }
+);
+
+onBeforeUnmount(() => controller?.abort());
 
 // --- SEO Head Management ---
 useHead(
@@ -217,73 +220,6 @@ useHead(
       ],
     };
   })
-);
-
-onMounted(() => {
-  const slugWithId = route.params.slugWithId;
-  if (typeof slugWithId === "string") {
-    const lastDashIndex = slugWithId.lastIndexOf("-");
-    if (lastDashIndex > -1) {
-      const idStr = slugWithId.substring(lastDashIndex + 1);
-      const potentialId = parseInt(idStr, 10);
-      if (!isNaN(potentialId)) {
-        articleId.value = potentialId;
-
-        // Fetch data using the parsed ID
-        fetchOriginalArticle(articleId.value);
-        fetchSimilarArticles(articleId.value);
-      } else {
-        console.error("Parsed ID is not a valid number:", idStr);
-        errorOriginal.value = "Invalid article ID format in URL.";
-        errorSimilar.value = "Invalid article ID format in URL.";
-      }
-    } else {
-      console.error("Could not find '-' separator in slugWithId:", slugWithId);
-      errorOriginal.value = "Invalid URL format for similar posts.";
-      errorSimilar.value = "Invalid URL format for similar posts.";
-    }
-  } else {
-    console.error("slugWithId param is missing or not a string:", slugWithId);
-    errorOriginal.value = "Missing article identifier in URL.";
-    errorSimilar.value = "Missing article identifier in URL.";
-  }
-});
-
-watch(
-  () => route.params.slugWithId,
-  (newSlugWithId) => {
-    if (newSlugWithId && typeof newSlugWithId === "string") {
-      // Re-parse and fetch if the parameter changes
-      const lastDashIndex = newSlugWithId.lastIndexOf("-");
-      if (lastDashIndex > -1) {
-        const idStr = newSlugWithId.substring(lastDashIndex + 1);
-        const potentialId = parseInt(idStr, 10);
-        if (!isNaN(potentialId)) {
-          articleId.value = potentialId;
-          fetchOriginalArticle(articleId.value);
-          fetchSimilarArticles(articleId.value);
-        } else {
-          console.error("Parsed ID is not a valid number:", idStr);
-          errorOriginal.value = "Invalid article ID format in URL.";
-          errorSimilar.value = "Invalid article ID format in URL.";
-        }
-      } else {
-        console.error(
-          "Could not find '-' separator in slugWithId:",
-          newSlugWithId
-        );
-        errorOriginal.value = "Invalid URL format for similar posts.";
-        errorSimilar.value = "Invalid URL format for similar posts.";
-      }
-    } else {
-      console.error(
-        "slugWithId param is missing or not a string:",
-        newSlugWithId
-      );
-      errorOriginal.value = "Missing article identifier in URL.";
-      errorSimilar.value = "Missing article identifier in URL.";
-    }
-  }
 );
 </script>
 

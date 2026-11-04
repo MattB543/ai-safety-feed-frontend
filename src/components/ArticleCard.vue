@@ -13,7 +13,7 @@ import {
   Bookmark as IconBookmark,
 } from "@vicons/tabler";
 import IconBookmarkFilled from "./icons/IconBookmarkFilled.vue";
-import { NTooltip, NButton } from "naive-ui";
+import { NTooltip } from "naive-ui";
 import {
   formatDate,
   formatRelativeDate,
@@ -58,6 +58,16 @@ const dynamicTooltipStyle = ref({});
 // 'authors'. Every other source repeats the source name or its domain there,
 // so the name is only worth surfacing for the forums.
 const FORUM_SOURCES = new Set(["Less Wrong", "EA Forum", "Alignment Forum"]);
+
+// Pastel category hues from aisafety.com, used only for the cluster chip.
+// Clusters without a hue fall back to the neutral grey-teal chip.
+const clusterHueMap = {
+  "core ai safety & alignment": "text-aisc-green",
+  "technical ml safety": "text-aisc-blue",
+  "ai governance & policy": "text-aisc-purple",
+  "forecasting & world modeling": "text-aisc-yellow",
+  "effective altruism & meta": "text-aisc-pink",
+};
 
 const clusterIconMap = {
   "Forecasting & World Modeling": IconWorld,
@@ -121,11 +131,16 @@ const formattedNoveltyNote = computed(() => {
   // Replace "ID <number>" with a link to the article
   const linkedHtml = props.article.novelty_note.replace(
     /ID (\d+)/g,
-    (match, id) =>
-      `<a href="#post-${id}" class="text-accent hover:underline">ID ${id}</a>` // Keep ID for clarity
+    (match, id) => `<a href="#post-${id}" class="link">ID ${id}</a>` // Keep ID for clarity
   );
   return DOMPurify.sanitize(linkedHtml);
 });
+
+const clusterHueClass = computed(
+  () =>
+    clusterHueMap[(props.article.cluster_tag || "").toLowerCase()] ||
+    "text-ink-2"
+);
 
 const ClusterIcon = computed(
   () => clusterIconMap[props.article.cluster_tag] || IconTag // fallback
@@ -245,92 +260,24 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
 </script>
 
 <template>
-  <article :id="`post-${article.id}`">
-    <!-- Mobile-only image, above the title -->
-    <n-tooltip
-      trigger="hover"
-      placement="bottom-start"
-      :disabled="!imageMetaphor"
-      :show-delay="300"
-    >
-      <template #trigger>
-        <a
-          v-if="article.cleaned_image || article.image_url"
-          :href="article.source_url"
-          target="_blank"
-          rel="noopener noreferrer"
-          :title="
-            imageMetaphor
-              ? null
-              : 'Open ' + (article.source_type || 'link') + ' in new tab'
-          "
-          class="md:hidden mb-3 flex h-[130px] w-[130px] items-center justify-center overflow-hidden rounded-md bg-surface-2"
-        >
-          <img
-            :src="article.cleaned_image || article.image_url"
-            :alt="imageMetaphor"
-            class="w-full h-full"
-            :class="article.cleaned_image ? 'object-cover' : 'object-contain'"
-            decoding="async"
-            :loading="priorityLoad ? 'eager' : 'lazy'"
-          />
-        </a>
-      </template>
-      {{ imageMetaphor }}
-    </n-tooltip>
-
-    <div class="flex flex-col md:flex-row md:items-start gap-4 mb-4">
-      <div class="flex-grow text-left">
-        <!-- Title -->
-        <h2 class="text-xl font-semibold text-ink leading-snug text-balance">
-          <n-tooltip
-            trigger="hover"
-            :disabled="!shouldUseCleanedTitle"
-            placement="top-start"
-            :show-delay="0"
-            :style="dynamicTooltipStyle"
-          >
-            <template #trigger>
-              <a
-                ref="titleLinkRef"
-                :href="article.source_url"
-                target="_blank"
-                rel="noopener noreferrer"
-                :title="
-                  !shouldUseCleanedTitle
-                    ? 'Open ' + (article.source_type || 'link') + ' in new tab'
-                    : null
-                "
-                class="cursor-pointer transition-colors hover:text-accent"
-              >
-                {{ displayTitle }}
-              </a>
-            </template>
-            {{ originalTitleTooltipContent }}
-          </n-tooltip>
-        </h2>
-
-        <!-- Sentence summary -->
-        <p
-          v-if="article.sentence_summary"
-          class="mt-3 max-w-[66ch] text-base leading-relaxed text-ink-2"
-        >
-          {{ article.sentence_summary }}
-        </p>
-
+  <article :id="`post-${article.id}`" class="card p-6 lg:p-10">
+    <div class="flex flex-col gap-6 md:flex-row md:items-start">
+      <!-- Phones: title (with a small thumbnail beside it), summary, then
+           chips, so the first title lands in the first screen. md and up:
+           chips first, as on aisafety.com cards. -->
+      <div class="flex min-w-0 flex-grow flex-col text-left">
         <!-- Cluster + topic chips -->
         <ul
           v-if="article.cluster_tag || filteredTopics.length"
-          class="mt-3 flex flex-wrap items-center gap-x-2 gap-y-2"
+          class="order-3 mt-4 flex flex-wrap items-center gap-2 md:order-1 md:mt-0 md:mb-4"
         >
-          <li v-if="article.cluster_tag" class="inline-flex items-center">
-            <span
-              class="inline-flex items-center gap-1 rounded-md bg-accent-soft px-2 py-1 text-xs font-medium text-accent-ink"
-            >
+          <li v-if="article.cluster_tag" class="inline-flex">
+            <span class="chip" :class="clusterHueClass">
               <component
                 :is="ClusterIcon"
-                class="w-4 h-4"
+                class="h-3.5 w-3.5"
                 stroke-width="1.75"
+                aria-hidden="true"
               />
               {{ formatTagForDisplay(article.cluster_tag) }}
             </span>
@@ -338,19 +285,95 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
           <li
             v-for="topic in filteredTopics.slice(0, 3)"
             :key="topic"
-            class="inline-flex items-center"
+            class="inline-flex"
           >
-            <span
-              class="inline-block rounded-full bg-surface-2 px-2.5 py-1 text-xs leading-tight text-ink-2"
-            >
+            <span class="chip text-ink-2">
               {{ formatTagForDisplay(topic) }}
             </span>
           </li>
         </ul>
+
+        <div class="order-1 flex items-start gap-4 md:order-2">
+          <!-- Title -->
+          <h2 class="type-h3 min-w-0 flex-1 text-balance text-ink">
+            <n-tooltip
+              trigger="hover"
+              :disabled="!shouldUseCleanedTitle"
+              placement="top-start"
+              :show-delay="0"
+              :style="dynamicTooltipStyle"
+            >
+              <template #trigger>
+                <a
+                  ref="titleLinkRef"
+                  :href="article.source_url"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  :title="
+                    !shouldUseCleanedTitle
+                      ? 'Open ' +
+                        (article.source_type || 'link') +
+                        ' in new tab'
+                      : null
+                  "
+                  class="cursor-pointer transition-colors hover:text-accent"
+                >
+                  {{ displayTitle }}
+                </a>
+              </template>
+              {{ originalTitleTooltipContent }}
+            </n-tooltip>
+          </h2>
+
+          <!-- Phone-only thumbnail beside the title.
+               v-if sits on the tooltip: an empty trigger slot makes Naive throw. -->
+          <n-tooltip
+            v-if="article.cleaned_image || article.image_url"
+            trigger="hover"
+            placement="bottom-end"
+            :disabled="!imageMetaphor"
+            :show-delay="300"
+          >
+            <template #trigger>
+              <a
+                :href="article.source_url"
+                target="_blank"
+                rel="noopener noreferrer"
+                :title="
+                  imageMetaphor
+                    ? null
+                    : 'Open ' + (article.source_type || 'link') + ' in new tab'
+                "
+                class="post-image flex h-[72px] w-[72px] shrink-0 md:hidden"
+              >
+                <img
+                  :src="article.cleaned_image || article.image_url"
+                  :alt="imageMetaphor"
+                  class="h-full w-full"
+                  :class="
+                    article.cleaned_image ? 'object-cover' : 'object-contain'
+                  "
+                  decoding="async"
+                  :loading="priorityLoad ? 'eager' : 'lazy'"
+                />
+              </a>
+            </template>
+            {{ imageMetaphor }}
+          </n-tooltip>
+        </div>
+
+        <!-- Sentence summary -->
+        <p
+          v-if="article.sentence_summary"
+          class="order-2 mt-3 max-w-[66ch] text-small text-ink md:order-3"
+        >
+          {{ article.sentence_summary }}
+        </p>
       </div>
 
       <!-- Desktop-only image, right of the text -->
       <n-tooltip
+        v-if="article.cleaned_image || article.image_url"
         trigger="hover"
         placement="left-start"
         :disabled="!imageMetaphor"
@@ -358,7 +381,6 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
       >
         <template #trigger>
           <a
-            v-if="article.cleaned_image || article.image_url"
             :href="article.source_url"
             target="_blank"
             rel="noopener noreferrer"
@@ -367,12 +389,12 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
                 ? null
                 : 'Open ' + (article.source_type || 'link') + ' in new tab'
             "
-            class="hidden md:flex flex-shrink-0 h-[202px] w-[202px] items-center justify-center overflow-hidden rounded-md bg-surface-2"
+            class="post-image hidden h-[202px] w-[202px] flex-shrink-0 md:flex"
           >
             <img
               :src="article.cleaned_image || article.image_url"
               :alt="imageMetaphor"
-              class="w-full h-full"
+              class="h-full w-full"
               :class="article.cleaned_image ? 'object-cover' : 'object-contain'"
               decoding="async"
               :loading="priorityLoad ? 'eager' : 'lazy'"
@@ -384,105 +406,112 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
     </div>
 
     <div class="text-left">
-      <div v-if="article.unique_aspects" class="mb-4">
-        <span class="block text-[13px] font-semibold text-ink-3 mb-1"
-          >How it's Unique</span
-        >
-        <div class="text-base text-ink-2">
+      <div v-if="article.unique_aspects" class="mt-5">
+        <span class="type-label mb-1 block text-ink-2">How it's unique</span>
+        <div class="text-small text-ink">
           {{ article.unique_aspects }}
         </div>
       </div>
-      <div v-if="article.author_credentials" class="mb-4">
-        <span class="block text-[13px] font-semibold text-ink-3 mb-1"
-          >About the Authors</span
-        >
-        <div class="text-base text-ink-2">
+      <div v-if="article.author_credentials" class="mt-5">
+        <span class="type-label mb-1 block text-ink-2">About the authors</span>
+        <div class="text-small text-ink">
           {{ article.author_credentials }}
         </div>
       </div>
 
-      <!-- Actions and authors -->
+      <!-- Actions and source meta -->
       <div
-        class="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-2 mb-4 mt-4"
+        class="mt-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between"
       >
-        <div class="flex items-center flex-wrap gap-2">
-          <n-button
+        <div class="-ml-3 flex flex-wrap items-center gap-1">
+          <button
             v-if="article.paragraph_summary || article.key_implication"
-            @click="toggleParagraphSummary"
-            size="small"
-            :quaternary="!isParagraphSummaryExpanded"
-            :type="isParagraphSummaryExpanded ? 'info' : 'default'"
+            type="button"
+            class="action-pill"
+            :class="{ 'is-active': isParagraphSummaryExpanded }"
             :aria-expanded="isParagraphSummaryExpanded"
             :title="
               isParagraphSummaryExpanded
-                ? 'Hide Main Points'
-                : 'Show Main Points'
+                ? 'Hide main points'
+                : 'Show main points'
             "
+            @click="toggleParagraphSummary"
           >
-            <template #icon>
-              <IconListDetails stroke-width="2" class="w-4 h-4" />
-            </template>
-            Main Points
-          </n-button>
-          <n-button
+            <IconListDetails
+              stroke-width="1.5"
+              class="h-4 w-4"
+              aria-hidden="true"
+            />
+            Main points
+          </button>
+          <button
             v-if="article.novelty_score !== null && article.novelty_note"
-            @click="toggleNovelty"
-            size="small"
-            :quaternary="!isNoveltyExpanded"
-            :type="isNoveltyExpanded ? 'info' : 'default'"
+            type="button"
+            class="action-pill"
+            :class="{ 'is-active': isNoveltyExpanded }"
             :aria-expanded="isNoveltyExpanded"
             :title="
-              isNoveltyExpanded ? 'Hide Novelty Note' : 'Show Novelty Note'
+              isNoveltyExpanded ? 'Hide novelty note' : 'Show novelty note'
             "
+            @click="toggleNovelty"
           >
-            <template #icon>
-              <IconSparklesCustom class="w-4 h-4" />
-            </template>
+            <IconSparklesCustom
+              class="h-4 w-4"
+              :class="{ 'text-novelty-high': noveltyRating >= 4 }"
+            />
             Novelty: {{ noveltyRating }}/5
-          </n-button>
+          </button>
           <router-link
             v-if="!hideSimilarButton"
             :to="`/similar/${slugify(displayTitle)}-${article.id}`"
             target="_blank"
             rel="noopener noreferrer"
-            class="inline-flex h-7 items-center gap-1 rounded-md px-2 text-sm text-ink-2 transition-colors hover:bg-surface-2 hover:text-ink focus:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            class="action-pill"
             title="View similar posts"
           >
-            <IconListSearch stroke-width="2" class="h-4 w-4" />
-            Similar Posts
+            <IconListSearch
+              stroke-width="1.5"
+              class="h-4 w-4"
+              aria-hidden="true"
+            />
+            Similar posts
           </router-link>
-          <n-button
-            @click="emit('toggle-bookmark', article.id)"
-            size="small"
-            quaternary
+          <button
+            type="button"
+            class="action-pill px-2"
             :aria-pressed="isBookmarked"
-            :title="isBookmarked ? 'Remove Bookmark' : 'Add Bookmark'"
+            :aria-label="isBookmarked ? 'Remove bookmark' : 'Add bookmark'"
+            :title="isBookmarked ? 'Remove bookmark' : 'Add bookmark'"
+            @click="emit('toggle-bookmark', article.id)"
           >
-            <template #icon>
-              <component
-                :is="isBookmarked ? IconBookmarkFilled : IconBookmark"
-                stroke-width="2"
-                class="w-4 h-4"
-                :class="{ 'text-accent fill-current': isBookmarked }"
-              />
-            </template>
-          </n-button>
+            <component
+              :is="isBookmarked ? IconBookmarkFilled : IconBookmark"
+              stroke-width="1.5"
+              class="h-4 w-4"
+              :class="{ 'fill-current text-accent': isBookmarked }"
+              aria-hidden="true"
+            />
+          </button>
         </div>
 
         <!-- Source meta: favicon, source, forum username, date -->
         <div
-          class="flex justify-start sm:justify-end flex-wrap items-center gap-x-2 gap-y-1 text-sm text-ink-3 mt-2 sm:mt-0"
+          class="flex flex-wrap items-center justify-start gap-x-2 gap-y-1 text-xs text-ink-2 sm:justify-end"
         >
-          <img
+          <span
             v-if="host"
-            :src="faviconUrl"
-            width="16"
-            height="16"
-            alt=""
-            class="rounded-sm"
-            loading="lazy"
-          />
-          <span v-if="article.source_type" class="font-medium text-ink-2">
+            class="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-xs bg-white"
+          >
+            <img
+              :src="faviconUrl"
+              width="14"
+              height="14"
+              alt=""
+              class="h-3.5 w-3.5"
+              loading="lazy"
+            />
+          </span>
+          <span v-if="article.source_type" class="font-normal text-ink">
             {{ article.source_type }}
           </span>
 
@@ -490,7 +519,7 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
                podcasts just repeat the source name or its domain there. -->
           <template v-if="isForumSource && article.authors?.length">
             <span aria-hidden="true">&middot;</span>
-            <n-tooltip trigger="hover" v-if="article.authors.length > 3">
+            <n-tooltip v-if="article.authors.length > 3" trigger="hover">
               <template #trigger>
                 <span class="inline-flex flex-wrap gap-x-1">
                   <span
@@ -499,7 +528,7 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
                   >
                     {{ author }}<span v-if="index < 2">,</span>
                   </span>
-                  <span>Et al.</span>
+                  <span>et al.</span>
                 </span>
               </template>
               {{ fullAuthorList }}
@@ -519,6 +548,7 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
           >
           <time
             v-if="article.published_date"
+            class="text-ink-3"
             :datetime="article.published_date"
             :title="formatDate(article.published_date)"
           >
@@ -534,11 +564,14 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
           class="grid [grid-template-rows:1fr]"
         >
           <div class="min-h-0 overflow-hidden">
-            <div class="mt-3 rounded-md bg-surface-2 px-4 py-3">
-              <span class="block text-[13px] font-semibold text-ink-3 mb-1">
-                Novelty ({{ noveltyRating }}/5 Score)
+            <div class="detail-panel mt-4">
+              <span class="type-label mb-1 block text-ink">
+                Novelty ({{ noveltyRating }}/5)
               </span>
-              <div class="text-ink-2" v-html="formattedNoveltyNote"></div>
+              <div
+                class="max-w-[68ch] text-[14px] leading-[1.7] text-ink-2 lg:text-[15px]"
+                v-html="formattedNoveltyNote"
+              ></div>
             </div>
           </div>
         </div>
@@ -551,30 +584,28 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
           class="grid [grid-template-rows:1fr]"
         >
           <div class="min-h-0 overflow-hidden">
-            <div class="mt-3 rounded-md bg-surface-2 px-4 py-3">
+            <div class="detail-panel mt-4">
               <div v-if="article.paragraph_summary">
-                <span class="block text-[13px] font-semibold text-ink-3 mb-1"
-                  >Main Points</span
-                >
+                <span class="type-label mb-1 block text-ink">Main points</span>
                 <div
-                  class="prose prose-sm max-w-none text-ink-2"
+                  class="prose prose-sm max-w-[68ch] lg:text-[15px]"
                   v-html="formattedParagraphSummary"
                 ></div>
               </div>
 
               <div
                 v-if="article.key_implication"
-                :class="article.paragraph_summary ? 'mt-4' : ''"
+                :class="article.paragraph_summary ? 'mt-5' : ''"
               >
-                <span class="block text-[13px] font-semibold text-ink-3 mb-1"
-                  >Implication</span
+                <span class="type-label mb-1 block text-ink">Implication</span>
+                <div
+                  class="max-w-[68ch] text-[14px] leading-[1.7] text-ink-2 lg:text-[15px]"
                 >
-                <div class="text-ink-2">
                   {{ article.key_implication }}
                 </div>
               </div>
 
-              <p class="mt-3 text-xs text-ink-3">AI-generated summary</p>
+              <p class="mt-4 text-xs text-ink-3">AI-generated summary</p>
             </div>
           </div>
         </div>
@@ -584,21 +615,52 @@ watch([() => displayTitle.value, () => props.article.id], updateTooltipStyle, {
 </template>
 
 <style>
-/* Flash the card background when it is the URL hash target */
+/* AI-generated post images: an 8px tile on a slightly lighter surface with a
+   hairline so light images don't glare against the dark card. */
+.post-image {
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+  border-radius: var(--radius-sm);
+  background-color: var(--color-surface-2);
+  box-shadow: inset 0 0 0 1px rgb(255 255 255 / 0.06);
+}
+.post-image img {
+  filter: brightness(0.92);
+  transition: filter 100ms ease-in-out;
+}
+.post-image:hover img {
+  filter: none;
+}
+
+/* Expanded Main points / Novelty panel inside a card. */
+.detail-panel {
+  border-radius: var(--radius-md);
+  background-color: rgb(0 25 27 / 0.5);
+  padding: 16px 20px;
+}
+@media (min-width: 62rem) {
+  .detail-panel {
+    padding: 20px 24px;
+  }
+}
+
+/* Ring the card when it is the URL hash target */
 @keyframes highlight-fade {
   0%,
   70% {
-    background-color: var(--color-accent-soft);
+    box-shadow:
+      0 0 0 2px var(--color-accent-strong),
+      var(--shadow-card);
   }
   100% {
-    background-color: transparent;
+    box-shadow: var(--shadow-card);
   }
 }
 
 article[id^="post-"]:target {
   animation: highlight-fade 2s ease-out forwards;
-  border-radius: var(--radius-md);
-  /* Add scroll margin to create space below fixed headers */
-  scroll-margin-top: 100px;
+  /* Clear the sticky header */
+  scroll-margin-top: 110px;
 }
 </style>

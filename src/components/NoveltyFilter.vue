@@ -1,6 +1,7 @@
 <script setup>
-import { ref, computed, watch, defineProps, defineEmits } from "vue";
-import { NButton, NPopover, NSlider, NIcon, NSpace } from "naive-ui";
+import { ref, computed, watch, nextTick } from "vue";
+import { NButton, NPopover, NSlider, NSpace } from "naive-ui";
+import { ChevronDown } from "@vicons/tabler";
 import IconSparklesCustom from "./icons/IconSparklesCustom.vue";
 
 const props = defineProps({
@@ -78,6 +79,32 @@ function cancel() {
   showPopover.value = false;
 }
 
+// Re-seed the draft from the committed value every time the popover opens, so
+// a slider moved and then abandoned (outside click / Escape) doesn't linger.
+// Also give Naive's slider handle (the element with role="slider") an
+// accessible name; NSlider has no prop for it.
+const sliderWrapRef = ref(null);
+const labelId = `novelty-label-${Math.random().toString(36).slice(2, 8)}`;
+
+watch(showPopover, async (open) => {
+  if (!open) return;
+  sliderValue.value = props.modelValue ?? 1;
+  await nextTick();
+  requestAnimationFrame(() => {
+    const handle = sliderWrapRef.value?.querySelector('[role="slider"]');
+    if (handle) {
+      handle.setAttribute("aria-labelledby", labelId);
+      handle.setAttribute("aria-valuetext", `${sliderValue.value} or higher`);
+    }
+  });
+});
+
+watch(sliderValue, (v) => {
+  sliderWrapRef.value
+    ?.querySelector('[role="slider"]')
+    ?.setAttribute("aria-valuetext", `${v} or higher`);
+});
+
 const marks = {
   1: "1",
   2: "2",
@@ -93,42 +120,39 @@ const marks = {
     trigger="click"
     placement="bottom"
     :show-arrow="false"
-    style="padding: 0; width: 240px"
+    style="padding: 0; width: 280px"
   >
-    <!-- Trigger button -->
+    <!-- Trigger pill -->
     <template #trigger>
       <button
         type="button"
         :disabled="disabled"
-        :class="[
-          'btn-secondary',
-          isFilterActive
-            ? 'ring-2 ring-accent border-transparent bg-accent-soft text-accent-ink'
-            : '',
-        ]"
+        :class="['filter-pill', { 'is-active': isFilterActive }]"
+        :aria-expanded="showPopover"
         aria-label="Filter by minimum novelty score"
       >
-        <NIcon
-          :component="IconSparklesCustom"
-          class="text-lg"
-          :class="{ 'text-accent': isFilterActive }"
-        />
+        <IconSparklesCustom class="h-4 w-4" />
         {{ buttonText }}
+        <ChevronDown
+          class="h-4 w-4 transition-transform"
+          :class="{ 'rotate-180': showPopover }"
+          stroke-width="1.5"
+          aria-hidden="true"
+        />
       </button>
     </template>
 
     <!-- Popover content -->
-    <div class="p-4">
+    <div class="p-5">
       <NSpace vertical size="large">
-        <div>
-          <!-- Optional wrapper for label + slider if NSpace needs direct children -->
-          <label
-            for="novelty-slider"
-            class="block text-sm font-medium text-ink-2 mb-2"
-            >Minimum Novelty Score</label
+        <div ref="sliderWrapRef">
+          <p
+            :id="labelId"
+            class="mb-3 block text-small font-semibold text-white"
           >
+            Minimum novelty score
+          </p>
           <NSlider
-            id="novelty-slider"
             v-model:value="sliderValue"
             :min="1"
             :max="5"
@@ -139,21 +163,16 @@ const marks = {
         </div>
 
         <!-- Actions -->
-        <div class="flex gap-2 justify-end">
-          <!-- Removed mt-8 as NSpace handles spacing -->
-          <NButton
-            size="small"
-            tertiary
-            @click="clearFilter"
-            v-if="isFilterActive"
+        <div class="flex justify-end gap-2">
+          <NButton v-if="isFilterActive" size="small" @click="clearFilter"
             >Clear</NButton
           >
-          <NButton size="small" tertiary @click="cancel">Cancel</NButton>
+          <NButton size="small" @click="cancel">Cancel</NButton>
           <NButton
             size="small"
             type="primary"
-            @click="applyFilter"
             style="flex-grow: 1"
+            @click="applyFilter"
           >
             Apply
           </NButton>
@@ -162,7 +181,3 @@ const marks = {
     </div>
   </NPopover>
 </template>
-
-<style scoped>
-/* Add any specific styles if needed */
-</style>

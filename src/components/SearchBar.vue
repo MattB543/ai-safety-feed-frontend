@@ -38,8 +38,8 @@ function handleSearch() {
 </script>
 
 <template>
-  <div class="flex gap-2 w-full">
-    <!-- Input with search icon prefix -->
+  <div class="flex w-full gap-2">
+    <!-- Pill input with search icon prefix (aqua-tinted fill, as on aisafety.com) -->
     <NInput
       v-model:value="value"
       :placeholder="placeholder"
@@ -47,24 +47,23 @@ function handleSearch() {
       clearable
       :disabled="disabled"
       :input-props="{ 'aria-label': 'Search feed' }"
-      @keyup.enter="handleSearch"
       class="flex-grow"
+      @keyup.enter="handleSearch"
     >
       <template #prefix>
-        <NIcon>
-          <SearchIcon />
+        <NIcon class="mr-1 text-ink-3">
+          <SearchIcon stroke-width="1.5" />
         </NIcon>
       </template>
     </NInput>
 
     <!-- Search button -->
     <button
+      type="button"
+      class="btn-secondary-sm flex-shrink-0"
       @click="handleSearch"
-      class="btn-secondary flex-shrink-0"
     >
       Search
     </button>
   </div>
 </template>
-
-<style scoped></style>
